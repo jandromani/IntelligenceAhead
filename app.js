@@ -1,9 +1,12 @@
 (() => {
   const toast = (msg) => { const el=document.getElementById('toast'); if(!el)return; el.textContent=msg; el.classList.add('show'); clearTimeout(window.__tiaToast); window.__tiaToast=setTimeout(()=>el.classList.remove('show'),1800); };
+  const track=(name,data={})=>{try{window.va&&window.va('event',{name,data})}catch(_){}}; window.tiaTrack=track;
+  document.querySelectorAll('[data-track]').forEach(el=>el.addEventListener('click',()=>track(el.dataset.track,{href:el.getAttribute('href')||''})));
+  document.querySelectorAll('[data-share-url]').forEach(btn=>btn.addEventListener('click',async()=>{const url=btn.dataset.shareUrl,title=btn.dataset.shareTitle||document.title;track('page_share',{title});try{if(navigator.share)await navigator.share({title,url});else if(navigator.clipboard){await navigator.clipboard.writeText(url);toast('Link copiado')}}catch(_){}}));
 
   document.querySelectorAll('.graph-node').forEach(node=>node.addEventListener('click',()=>{
     document.querySelectorAll('.graph-node').forEach(n=>n.classList.remove('active')); node.classList.add('active');
-    const note=document.getElementById('graph-note'); if(note) note.textContent=node.dataset.note || '';
+    const note=document.getElementById('graph-note'); if(note) note.textContent=node.dataset.note || ''; track('future_graph_click',{concept:node.dataset.concept||node.textContent.trim()});
   }));
 
   const poll=document.querySelector('[data-poll="next-issue"]');
@@ -12,7 +15,7 @@
     if(selected){const b=poll.querySelector(`[data-vote="${selected}"]`); if(b)b.classList.add('selected');}
     poll.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
       poll.querySelectorAll('button').forEach(x=>x.classList.remove('selected'));btn.classList.add('selected');localStorage.setItem(key,btn.dataset.vote);
-      const note=document.getElementById('poll-note');if(note)note.textContent='Selección guardada en este dispositivo. La votación pública llegará cuando conectemos el backend.';
+      track('next_issue_vote',{choice:btn.dataset.vote}); const note=document.getElementById('poll-note');if(note)note.textContent='Señal registrada. Gracias por ayudar a orientar la siguiente investigación.';
     }));
   }
 
@@ -30,7 +33,8 @@
       {img:'/assets/issues/001/09-ecologia.webp',title:'Del swarm a la ecología',desc:'La siguiente unidad podría no ser un único agente, sino poblaciones especializadas que compiten, colaboran, migran capacidades y evolucionan de forma distinta.',chips:['Population','Migration','Evolution']},
       {img:'/assets/issues/001/10-cinco-piezas.webp',title:'Mi apuesta para 2027: 5 piezas',desc:'Adaptive harness + metabolismo cognitivo + world graph y evidencia + skill genome e inmunidad + población conectada a la realidad.',chips:['Thesis','2027','Five Pieces']},
     ];
-    let current=0;
+    const slugs=['2027-cuando-la-ia-deja-de-ser-un-chatbot','del-modelo-al-organismo','mas-agentes-no-es-mas-inteligencia','la-mosca-nos-da-una-pista','pensar-menos-pensar-mejor','el-harness-es-el-nuevo-modelo','del-razonamiento-al-software','reality-bridge','del-swarm-a-la-ecologia','cinco-piezas-para-2027'];
+    let current=0,maxSeen=0;
     const thumbs=document.getElementById('thumbs'), counter=document.getElementById('page-counter'), no=document.getElementById('page-no'), title=document.getElementById('page-title'), desc=document.getElementById('page-desc'), chips=document.getElementById('page-chips'), progress=document.getElementById('progress');
     pages.forEach((p,i)=>{const b=document.createElement('button');b.className='thumb';b.type='button';b.innerHTML=`<img src="${p.img}" alt="Miniatura página ${i+1}" loading="lazy"><span>${String(i+1).padStart(2,'0')}</span>`;b.addEventListener('click',()=>show(i,true));thumbs.appendChild(b);});
     const show=(i,push=false)=>{
@@ -38,7 +42,7 @@
       counter.textContent=`${String(current+1).padStart(2,'0')} / 10`;no.textContent=String(current+1).padStart(2,'0');title.textContent=p.title;desc.textContent=p.desc;chips.innerHTML=p.chips.map(c=>`<span class="chip">${c}</span>`).join('');progress.style.width=`${(current+1)*10}%`;
       thumbs.querySelectorAll('.thumb').forEach((x,j)=>x.classList.toggle('active',j===current));
       const active=thumbs.children[current]; if(active?.scrollIntoView) active.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});
-      if(push){const u=new URL(location.href);u.searchParams.set('page',current+1);history.pushState({page:current+1},'',u);}
+      if(push){const u=new URL(location.href);u.searchParams.set('page',current+1);history.pushState({page:current+1},'',u);} maxSeen=Math.max(maxSeen,current+1);track('issue_page_view',{issue:'001',page:current+1,slug:slugs[current]});if(maxSeen===10&&!sessionStorage.getItem('tia-001-complete')){sessionStorage.setItem('tia-001-complete','1');track('issue_complete',{issue:'001'});}
     };
     document.getElementById('prev-page')?.addEventListener('click',()=>show(current-1,true));document.getElementById('next-page')?.addEventListener('click',()=>show(current+1,true));
     addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;if(e.key==='ArrowLeft')show(current-1,true);if(e.key==='ArrowRight')show(current+1,true);if(e.key==='Escape')closeLightbox();});
@@ -49,7 +53,7 @@
     const closeLightbox=()=>{lb.classList.remove('open');lb.setAttribute('aria-hidden','true')};
     document.getElementById('open-page')?.addEventListener('click',openLightbox);document.getElementById('lightbox-close')?.addEventListener('click',closeLightbox);lb?.addEventListener('click',e=>{if(e.target===lb)closeLightbox()});
     document.getElementById('share-page')?.addEventListener('click',async()=>{
-      const u=new URL(location.href);u.searchParams.set('page',current+1);const share={title:`The Intelligence Ahead · ${String(current+1).padStart(2,'0')}/10`,text:pages[current].title,url:u.toString()};
+      const u=new URL(`/issues/001/${slugs[current]}`,location.origin);const share={title:`The Intelligence Ahead · ${String(current+1).padStart(2,'0')}/10`,text:pages[current].title,url:u.toString()};track('issue_share',{issue:'001',page:current+1});
       try{if(navigator.share)await navigator.share(share);else if(navigator.clipboard){await navigator.clipboard.writeText(u.toString());toast('Link copiado');}else toast('Copia la URL de esta página');}catch(_){}
     });
   }
