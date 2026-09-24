@@ -1,4 +1,5 @@
 name: Restore publication source
+# Trigger restore after workflow registration
 
 on:
   push:
