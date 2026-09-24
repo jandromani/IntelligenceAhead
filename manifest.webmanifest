@@ -1,0 +1,9 @@
+{
+  "name": "The Intelligence Ahead",
+  "short_name": "IA Ahead",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3efe6",
+  "theme_color": "#c61c1c",
+  "description": "A living magazine about what comes next."
+}
