@@ -1,0 +1,86 @@
+name: Restore publication source
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/restore-publication.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull verified original publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://intelligence-ahead-n8870gby9-jandromanis-projects.vercel.app"
+          mkdir -p assets/issues/001
+
+          for file in index.html styles.css app.js issue-001.html 404.html robots.txt; do
+            curl -fsSL "$BASE/$file" -o "$file"
+          done
+
+          for file in             01-cover.webp             02-modelo-organismo.webp             03-agentes-inteligencia.webp             04-mosca-pista.webp             05-pensar-mejor.webp             06-harness.webp             07-razonamiento-software.webp             08-reality-bridge.webp             09-ecologia.webp             10-cinco-piezas.webp; do
+            curl -fsSL "$BASE/assets/issues/001/$file" -o "assets/issues/001/$file"
+          done
+
+          grep -q "The Intelligence Ahead" index.html
+          grep -q "2027: cuando la IA deja de ser un chatbot" index.html
+          test $(wc -c < index.html) -lt 50000
+          test $(wc -c < assets/issues/001/01-cover.webp) -gt 100000
+
+      - name: Add Vercel config and README
+        shell: bash
+        run: |
+          cat > vercel.json <<'EOF'
+          {
+            "cleanUrls": true,
+            "trailingSlash": false,
+            "headers": [
+              {
+                "source": "/(.*)",
+                "headers": [
+                  {"key": "X-Content-Type-Options", "value": "nosniff"},
+                  {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"}
+                ]
+              },
+              {
+                "source": "/assets/(.*)",
+                "headers": [
+                  {"key": "Cache-Control", "value": "public, max-age=31536000, immutable"}
+                ]
+              }
+            ]
+          }
+          EOF
+
+          cat > README.md <<'EOF'
+          # The Intelligence Ahead
+
+          Independent editorial publication by Alejandro BGN about AI, agents, robotics, embodied intelligence and the systems that come next.
+
+          **Production:** https://intelligence-ahead.vercel.app/
+
+          ## Current issue
+
+          **Nº001 · September 2026**  
+          *2027: cuando la IA deja de ser un chatbot*
+
+          This repository is the source of truth. Commits to `master` deploy automatically to Vercel.
+          EOF
+
+      - name: Commit publication
+        shell: bash
+        run: |
+          git config user.name "Intelligence Ahead Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html styles.css app.js issue-001.html 404.html robots.txt vercel.json README.md assets/issues/001
+          git commit -m "Restore full The Intelligence Ahead publication"
+          git push origin HEAD:master
