@@ -1,0 +1,35 @@
+name: Publish Issue 004 artwork
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/publish-004.yml'
+permissions:
+  contents: write
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import magazine pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p assets/issues/004
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUcG0tSEK1f0-7KryRkAXYMkGeX8-mIaC0xrdRscisTrJyUsEprXm3jkB4LnTwoxyO8Y9wBNiTjP8-wO4cnEN9LmFLQNLKTq9bMwZ-yhyl3hekTCpBOfWuvmPSQOqOvcpiLVToO4RGzAJEf3tYzxmubJYoO70f144ayxo0IV9qNlXx3XUh4=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/01.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUc4vDLnClPM8mB3d0OdkWPStmFVn81E2HRGGjFqlypGUhtz1JqhnX42DS4LnNh2bjN_lX8HttJ8tnJEKzTteLIklLhUdXao4nY0lejDSFLpqVkcyejiGIWPLsaZKgjP3B44Z2tRAT9cL4Z4O1rfHHVIAHmnbLLj6-CifuIGxImE2jeZD3U=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/02.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUdC6PIM_tSfQjh0QKW4JT_WKRij0Ve0Xws7xNNP1cUIPp159okP8tLYJVZdoh7E32kEdJx-V9VQxaKXta62hFxdtj9gmstwRmWOT5oww6MIeYWLa-pUiJH1KYAK_BHZSqPGciUId1X5KbWbYYQczawagZetmb-6mbD6IAzMLmQkt5hCPaI=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/03.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUey2mDUVNayspeFIDvnUXT0fnTu0btklXe6CUwjJiryWbF0mkHhPHP4v7q7CMNw-oefV1vdjyHVaVaS4iHsUipPNpl84a7tZfZcwlShMe4A4v7Y5zINW5orjnhppoNlG6EO3GBO57fksDEWK6crICYCSO_R37AA8rq8DzitfBCDzuDR6Ik=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/04.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUf2uLcuOhKy7eXVFx-EOVIU4zLXwDGukBDTaarHS_vhSDwYu54YU0EOmwmfPhWsExlKMZdV2FHloWGFglIj5YpFQGKpKptdgSsl_KfuhopFJ2hMMD-zjbzeoR48ooHwFi_N06L0z1Sa-eUriYjiQPEaWgMR-wc11e0ZcOsjdpoNdEoWQWc=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/05.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUcwwKJwv8Kwks66GijfSWoj_Nqnd31TsQJolWge2V5wNNM_DwkUW64iOwdjlG6juaQcxtTsIhUTFf0DE3wRDQ5zpYFjJbuE3k1yCkh0TONgoG93YI7hCJbjJyRoAniWeo-swSbEpryhauQWG4FPY3RP1xB0h4yJRjPJGU-tBU06FGRUFmM=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/06.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUdaRAQbGgjbYl6_dfQmpm1pSJKtS-_nbuZt86tdnYTuW76v4RJeQquwG_T0cFV1jaOfxF7Kd9Gk3t98_qsRbwiJ1tCP9lo_iUkHqNs9j9PU5OgpUIpK53zCzo474OBPtrYZbuIzWOJIfrp6P0pzmapYdlVpu1uqnBAQvmHPicfGstj3=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/07.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfopyfZUFAupTpDPXIbeuc90cowuE5mYFcOaJzbKUesNkBOhX57FSW6_rC0ZPLgDW784mmxUXnsEwduQoqGBwtamViUJZOuEAayhNQvMvHh2Lfu8dPc6e9BWg0MdJs2zFe0NgsHHuIrCXQP8Ig8LhgLIU3oCZSEGRo4oHLFXrRDB3-0=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/08.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUeD08PN8WpssOWTAZsKI5a9eTo7yDrthD9zIiDhzdOkDBX2vCl3zzxbhkI9ZEAyVKdAVf5qov-tdYi1CrJDRmfKWpnp09TNPm3fbFsgJFJHhlPSpeWE0zrgfRds7w_5rLBJzGKFMNkxZbZKG0npep7PjdK4VENw2GJEGBpw0DNG6SeFcXc=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/09.jpg'
+          curl -fsSL 'https://lh7-rt.googleusercontent.com/slidesz/AGV_vUeUG0V0CQh1pyZm2zohp1vNXVSQLBzjstQeJgElGviIRFyA08_iGQ_VZV-2xdZKcJXOQAUVJl4nQ7nPQwIgdsvaH7fd9G-XEmE_5OKQ02YoKh7nahHl7068-Ao9qx44ke1odcQxn25yTuBRq-Z3ojnyUE2RJjaXDPYhxNMXRU41VOAZ=s2048?key=82sXAxSvSn4VPyvtKuWRHA' -o 'assets/issues/004/10.jpg'
+          test $(find assets/issues/004 -name '*.jpg' | wc -l) -eq 10
+          git config user.name "The Intelligence Ahead"
+          git config user.email "actions@users.noreply.github.com"
+          git add assets/issues/004
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Publish Issue 004 artwork"
+          git push origin HEAD:master
