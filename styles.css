@@ -135,3 +135,12 @@ img{max-width:100%;display:block}
 .page-next-prev span{display:block;font-size:9px;letter-spacing:.13em;color:var(--red)}.page-next-prev b{display:block;font-family:var(--serif);font-size:21px;margin-top:5px}
 @media(max-width:1080px){.editorial-grid{grid-template-columns:1fr 1fr}.page-card-grid{grid-template-columns:repeat(3,1fr)}.prediction-cards{grid-template-columns:1fr}.page-article-grid{grid-template-columns:1fr}.page-article-grid article{position:static}.manifesto-editorial{grid-template-columns:190px 1fr}.page-big-no{font-size:100px}}
 @media(max-width:720px){.edition-bar .container span:nth-child(2){display:none}.editorial-grid{grid-template-columns:1fr}.editorial-grid>div{border-right:0;border-bottom:1px solid rgba(255,255,255,.35)}.page-card-grid{grid-template-columns:1fr 1fr}.manifesto-editorial{grid-template-columns:1fr;gap:30px}.manifesto-editorial aside{position:static}.ledger-meta{grid-template-columns:1fr 1fr}.ledger-meta>div{border-bottom:1px solid var(--ink)}.page-article-head{grid-template-columns:1fr}.page-big-no{font-size:80px}.page-article-grid{display:block}.page-article-grid article{margin-top:10px}.page-next-prev b{font-size:15px}}
+
+
+/* published issue archive */
+.issue-card:not(.main) img{width:100%;aspect-ratio:4/5;object-fit:cover;object-position:top;border-bottom:1px solid var(--ink);background:#d8d1c5}
+.issue-card{transition:transform .22s ease,box-shadow .22s ease}
+.issue-card:hover{transform:translateY(-5px);box-shadow:0 16px 38px rgba(20,15,10,.12)}
+.issue-card.main:hover{box-shadow:0 18px 44px rgba(0,0,0,.22)}
+.issue-card .issue-no{color:var(--red);font-weight:800}
+.issue-card.main .issue-no{color:#ff6868}
