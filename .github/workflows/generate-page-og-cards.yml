@@ -1,0 +1,145 @@
+name: Generate page OG cards
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/generate-page-og-cards.yml'
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pillow
+      - name: Build 50 editorial page cards
+        shell: bash
+        run: |
+          cat > /tmp/pageog.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont, ImageFilter
+          from pathlib import Path
+
+          W,H=1200,630
+          Y=(244,205,35); WHITE=(255,255,255); CREAM=(246,241,230); MUTED=(183,177,166); BLACK=(8,8,8)
+          serif="/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+          sans="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          sansb="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          meta={
+          "001":[
+          ("2027: CUANDO LA IA DEJA DE SER UN CHATBOT","assets/issues/001/01-cover.webp"),
+          ("DEL MODELO AL ORGANISMO","assets/issues/001/02-modelo-organismo.webp"),
+          ("MÁS AGENTES ≠ MÁS INTELIGENCIA","assets/issues/001/03-agentes-inteligencia.webp"),
+          ("LA MOSCA NOS DA UNA PISTA","assets/issues/001/04-mosca-pista.webp"),
+          ("PENSAR MENOS. PENSAR MEJOR.","assets/issues/001/05-pensar-mejor.webp"),
+          ("EL HARNESS ES EL NUEVO MODELO","assets/issues/001/06-harness.webp"),
+          ("DEL RAZONAMIENTO AL SOFTWARE","assets/issues/001/07-razonamiento-software.webp"),
+          ("REALITY BRIDGE","assets/issues/001/08-reality-bridge.webp"),
+          ("DEL SWARM A LA ECOLOGÍA","assets/issues/001/09-ecologia.webp"),
+          ("CINCO PIEZAS PARA 2027","assets/issues/001/10-cinco-piezas.webp")],
+          "002":[
+          ("0 → 1.000.000.000","assets/issues/002/01.jpg"),
+          ("UN ROBOT NO NECESITA DAR A LUZ A OTRO ROBOT","assets/issues/002/02.jpg"),
+          ("5 MILLONES HOY. ¿1.000 MILLONES MAÑANA?","assets/issues/002/03.jpg"),
+          ("¿Y SI PRODUCIR COSAS SE VUELVE 10× MÁS BARATO?","assets/issues/002/04.jpg"),
+          ("LA CIUDAD QUE SE CONSTRUYE SOLA","assets/issues/002/05.jpg"),
+          ("TODO MÁS BARATO. ¿QUIÉN SE QUEDA EL DINERO?","assets/issues/002/06.jpg"),
+          ("NO LLEGAREMOS TODOS AL FUTURO EL MISMO MARTES","assets/issues/002/07.jpg"),
+          ("¿QUIÉN SE OCUPA DE NOSOTROS?","assets/issues/002/08.jpg"),
+          ("HOY CEREBRO DE MOSCA. MAÑANA, ¿QUÉ?","assets/issues/002/09.jpg"),
+          ("¿QUÉ QUEDA CUANDO PODEMOS FABRICAR CASI TODO?","assets/issues/002/10.jpg")],
+          "003":[
+          ("THE EMBODIED DATA AHEAD","assets/issues/003/01.jpg"),
+          ("DEL DATO AL CUERPO","assets/issues/003/02.jpg"),
+          ("CUANDO EL MUNDO TAMBIÉN ES DATOS","assets/issues/003/03.jpg"),
+          ("VER, TOCAR, OÍR, OLER, SITUARSE","assets/issues/003/04.jpg"),
+          ("CUANDO EL DATO RESPIRA CON EL MUNDO","assets/issues/003/05.jpg"),
+          ("MÁS SENSORES. MEJORES MODELOS. MÁS MUNDO.","assets/issues/003/06.jpg"),
+          ("YA NO MIRAMOS DATOS. VIVIMOS DENTRO DE ELLOS.","assets/issues/003/07.jpg"),
+          ("SIN TRAZABILIDAD, NO HAY CONFIANZA","assets/issues/003/08.jpg"),
+          ("DONDE LOS DATOS YA TOCAN EL MUNDO","assets/issues/003/09.jpg"),
+          ("LA PRÓXIMA INTERFAZ SERÁ EL MUNDO","assets/issues/003/10.jpg")],
+          "004":[
+          ("THE HUMAN AHEAD · LO QUE NO SE AUTOMATIZA","assets/issues/004/01.jpg"),
+          ("LA REALIDAD DE MI HIJO NO ES LA MÍA","assets/issues/004/02.jpg"),
+          ("LA DOPAMINA NO TIENE EDAD","assets/issues/004/03.jpg"),
+          ("CUANDO EL ALGORITMO SUAVIZA LOS EXTREMOS","assets/issues/004/04.jpg"),
+          ("AURA: LO QUE NO CABE EN EL FEED","assets/issues/004/05.jpg"),
+          ("LA AUTOMATIZACIÓN NO MATA EL TRABAJO: LO MUTA","assets/issues/004/06.jpg"),
+          ("UNA GENERACIÓN QUE TRAGA TERABYTES","assets/issues/004/07.jpg"),
+          ("QUÉ SEGUIRÁ SIENDO HUMANO","assets/issues/004/08.jpg"),
+          ("SI EL EMPLEO YA NO ORDENA LA VIDA, ¿QUÉ LO HARÁ?","assets/issues/004/09.jpg"),
+          ("LO QUE NO SE AUTOMATIZA","assets/issues/004/10.jpg")],
+          "005":[
+          ("EL FIN DE OLVIDAR","assets/issues/005/01.jpg"),
+          ("TU SEGUNDO CEREBRO YA HA EMPEZADO","assets/issues/005/02.jpg"),
+          ("INFANCIA CONSULTABLE","assets/issues/005/03.jpg"),
+          ("CUANDO NADIE PUEDE DECIR: ESO NO PASÓ","assets/issues/005/04.jpg"),
+          ("¿QUIÉN ERES CUANDO TODAS TUS VERSIONES SIGUEN VIVAS?","assets/issues/005/05.jpg"),
+          ("LA MUERTE YA NO BORRARÁ LA CONVERSACIÓN","assets/issues/005/06.jpg"),
+          ("EL DERECHO A SER OLVIDADO POR TU PROPIA IA","assets/issues/005/07.jpg"),
+          ("MEMORIA = PODER","assets/issues/005/08.jpg"),
+          ("DOS HUMANOS. DOS MEMORIAS.","assets/issues/005/09.jpg"),
+          ("LO QUE MERECE SER RECORDADO","assets/issues/005/10.jpg")]
+          }
+
+          names={
+          "001":"THE INTELLIGENCE AHEAD",
+          "002":"THE BILLION ROBOT ECONOMY",
+          "003":"THE EMBODIED DATA AHEAD",
+          "004":"THE HUMAN AHEAD",
+          "005":"THE MEMORY AHEAD"
+          }
+
+          def fit(text,draw,maxw,maxsize=58,minsize=30):
+              for size in range(maxsize,minsize-1,-2):
+                  f=ImageFont.truetype(serif,size)
+                  words=text.split()
+                  lines=[]; cur=""
+                  for w in words:
+                      t=(cur+" "+w).strip()
+                      if draw.textbbox((0,0),t,font=f)[2] <= maxw: cur=t
+                      else:
+                          if cur: lines.append(cur)
+                          cur=w
+                  if cur: lines.append(cur)
+                  if len(lines)<=3:
+                      return f,"\n".join(lines)
+              f=ImageFont.truetype(serif,minsize)
+              return f,text
+
+          out=Path("assets/og/pages"); out.mkdir(parents=True,exist_ok=True)
+          for issue,pages in meta.items():
+              for idx,(title,path) in enumerate(pages,1):
+                  src=Image.open(path).convert("RGB")
+                  # background uses the page itself, blurred/darkened
+                  bg=src.resize((W,H)).filter(ImageFilter.GaussianBlur(20)).convert("RGBA")
+                  bg=Image.alpha_composite(bg,Image.new("RGBA",(W,H),(0,0,0,150)))
+                  # strong left matte
+                  matte=Image.new("RGBA",(W,H),(4,4,4,220))
+                  mask=Image.new("L",(W,H),0); md=ImageDraw.Draw(mask); md.rectangle((0,0,720,H),fill=255); matte.putalpha(mask)
+                  bg=Image.alpha_composite(bg,matte)
+                  # source page on right
+                  th=560; ratio=th/src.height; sw=int(src.width*ratio); art=src.resize((sw,th))
+                  x=1148-sw; y=35; bg.alpha_composite(art.convert("RGBA"),(x,y))
+                  d=ImageDraw.Draw(bg)
+                  d.rectangle((18,18,W-18,H-18),outline=Y,width=4)
+                  d.text((52,42),names[issue],font=ImageFont.truetype(serif,28),fill=CREAM)
+                  d.text((52,82),f"Nº{issue} · PÁGINA {idx:02d}/10",font=ImageFont.truetype(sansb,16),fill=Y)
+                  d.line((52,115,670,115),fill=Y,width=3)
+                  f,wrapped=fit(title,d,600)
+                  d.multiline_text((52,155),wrapped,font=f,fill=WHITE,spacing=-2)
+                  bb=d.multiline_textbbox((52,155),wrapped,font=f,spacing=-2)
+                  yy=min(bb[3]+28,460)
+                  d.text((52,yy),"THE INTELLIGENCE AHEAD",font=ImageFont.truetype(sansb,19),fill=Y)
+                  d.text((52,548),"COMPARTIR UNA IDEA · LEER EL NÚMERO COMPLETO",font=ImageFont.truetype(sansb,14),fill=CREAM)
+                  d.text((52,577),"intelligence-ahead.vercel.app",font=ImageFont.truetype(sans,14),fill=MUTED)
+                  bg.convert("RGB").save(out/f"{issue}-{idx:02d}.jpg",quality=91,optimize=True)
+          PY
+          python /tmp/pageog.py
+          git config user.name "The Intelligence Ahead"
+          git config user.email "actions@users.noreply.github.com"
+          git add assets/og/pages
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Generate 50 page-level editorial OG cards"
+          git push origin HEAD:master
