@@ -6,13 +6,21 @@
 https://intelligence-ahead.vercel.app/
 
 ## Published issues
-
 - **Nº005 · The Memory Ahead — El fin de olvidar**
 - **Nº004 · The Human Ahead — Lo que no se automatiza**
 - **Nº003 · The Embodied Data Ahead**
 - **Nº002 · 0 → 1.000.000.000 — La economía del billón de robots**
 - **Nº001 · 2027: cuando la IA deja de ser un chatbot**
 
-Each issue contains 10 editorial pages and an immersive web reader. Nº005 also ships with dedicated page-level share routes and a landscape social card.
+## Editorial distribution system
+- 5 published issues / 50 editorial pages
+- immersive reader for every issue
+- 10 clean page-level URLs per issue
+- 5 dedicated 1200×630 issue social cards
+- 50 dedicated 1200×630 page social cards
+- Open Graph + Twitter large cards + canonical metadata
+- JSON-LD article metadata
+- sitemap indexing all editorial routes
+- RSS feed for issue-level publishing
 
 Commits to `master` deploy automatically to Vercel.
