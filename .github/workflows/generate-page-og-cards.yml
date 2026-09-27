@@ -1,4 +1,5 @@
 name: Generate page OG cards
+# trigger
 on:
   push:
     branches: [master]
