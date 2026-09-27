@@ -1,0 +1,106 @@
+name: Generate editorial OG cards
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/generate-og-cards.yml'
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pillow
+      - name: Build 1200x630 issue cards
+        shell: bash
+        run: |
+          cat > /tmp/og.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont, ImageFilter
+          from pathlib import Path
+
+          W,H=1200,630
+          Y=(244,205,35)
+          CREAM=(246,241,230)
+          WHITE=(255,255,255)
+          MUTED=(190,184,173)
+          BLACK=(10,10,9)
+
+          issues=[
+            ("001","2027: CUANDO LA IA DEJA\nDE SER UN CHATBOT","DEL MODELO AL ORGANISMO","assets/issues/001/01-cover.webp"),
+            ("002","0 → 1.000.000.000","LA ECONOMÍA DEL BILLÓN DE ROBOTS","assets/issues/002/01.jpg"),
+            ("003","THE EMBODIED\nDATA AHEAD","DATOS CON CUERPO · REALIDAD LÍQUIDA","assets/issues/003/01.jpg"),
+            ("004","THE HUMAN AHEAD","LO QUE NO SE AUTOMATIZA","assets/issues/004/01.jpg"),
+          ]
+
+          serif="/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+          sans="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          sansb="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          def fit_font(text,path,max_size,min_size,max_w,draw):
+              for size in range(max_size,min_size-1,-2):
+                  f=ImageFont.truetype(path,size)
+                  lines=text.split("\n")
+                  if max(draw.textbbox((0,0),ln,font=f)[2] for ln in lines)<=max_w:
+                      return f
+              return ImageFont.truetype(path,min_size)
+
+          out=Path("assets/og"); out.mkdir(parents=True,exist_ok=True)
+          for num,title,sub,cover_path in issues:
+              cover=Image.open(cover_path).convert("RGB")
+              # cinematic background from cover
+              bg=cover.resize((W,H))
+              bg=bg.filter(ImageFilter.GaussianBlur(20))
+              shade=Image.new("RGBA",(W,H),(0,0,0,145))
+              bg=Image.alpha_composite(bg.convert("RGBA"),shade)
+
+              # left matte for readability
+              matte=Image.new("RGBA",(W,H),(7,7,7,195))
+              mask=Image.new("L",(W,H),0)
+              md=ImageDraw.Draw(mask)
+              md.rectangle((0,0,735,H),fill=255)
+              matte.putalpha(mask)
+              bg=Image.alpha_composite(bg,matte)
+
+              # cover portrait at right, contained
+              target_h=560
+              ratio=target_h/cover.height
+              cw=int(cover.width*ratio)
+              cover2=cover.resize((cw,target_h))
+              x=1140-cw; y=35
+              bg.alpha_composite(cover2.convert("RGBA"),(x,y))
+
+              d=ImageDraw.Draw(bg)
+              d.rectangle((18,18,W-18,H-18),outline=Y,width=4)
+
+              f_brand=ImageFont.truetype(serif,34)
+              f_small=ImageFont.truetype(sansb,17)
+              f_meta=ImageFont.truetype(sans,15)
+              d.text((52,42),"THE INTELLIGENCE AHEAD",font=f_brand,fill=CREAM)
+              d.text((52,91),f"Nº{num} · SEPTIEMBRE 2026",font=f_small,fill=Y)
+              d.line((52,125,690,125),fill=Y,width=3)
+
+              f_title=fit_font(title,serif,66,42,610,d)
+              d.multiline_text((52,164),title,font=f_title,fill=WHITE,spacing=-4)
+              tb=d.multiline_textbbox((52,164),title,font=f_title,spacing=-4)
+              yy=tb[3]+24
+              f_sub=fit_font(sub,sansb,27,19,610,d)
+              d.multiline_text((52,yy),sub,font=f_sub,fill=Y,spacing=3)
+
+              d.text((52,540),"UNA REVISTA SOBRE LO QUE VIENE",font=f_small,fill=CREAM)
+              d.text((52,571),"intelligence-ahead.vercel.app",font=f_meta,fill=MUTED)
+
+              # issue stamp
+              d.rounded_rectangle((1030,48,1136,93),radius=4,fill=BLACK,outline=Y,width=2)
+              d.text((1083,70),f"Nº{num}",font=f_small,fill=Y,anchor="mm")
+
+              bg.convert("RGB").save(out/f"issue-{num}.jpg",quality=92,optimize=True)
+
+          PY
+          python /tmp/og.py
+          git config user.name "The Intelligence Ahead"
+          git config user.email "actions@users.noreply.github.com"
+          git add assets/og/issue-001.jpg assets/og/issue-002.jpg assets/og/issue-003.jpg assets/og/issue-004.jpg
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Generate premium OG cards for Issues 001–004"
+          git push origin HEAD:master
