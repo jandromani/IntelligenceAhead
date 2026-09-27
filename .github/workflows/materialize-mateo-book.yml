@@ -6,7 +6,7 @@ on:
     branches:
       - mateo-book-web
     paths:
-      - 'mateo/asset-urls-*.txt'
+      - 'mateo/asset-trigger.txt'
 
 permissions:
   contents: write
@@ -15,19 +15,17 @@ jobs:
   materialize:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout preview branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: mateo-book-web
           fetch-depth: 0
-
       - name: Download 124 book pages
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p mateo/pages
           count=0
-          for list in mateo/asset-urls-*.txt; do
+          for list in mateo/asset-part-*.txt; do
             while IFS='|' read -r n url; do
               [ -z "$n" ] && continue
               echo "Downloading page $n"
@@ -38,7 +36,6 @@ jobs:
           done
           echo "Downloaded $count pages"
           test "$count" -eq 124
-
       - name: Commit exact page assets
         shell: bash
         run: |
@@ -46,9 +43,5 @@ jobs:
           git config user.name "Mateo Book Builder"
           git config user.email "actions@users.noreply.github.com"
           git add mateo/pages
-          if git diff --cached --quiet; then
-            echo "No page changes"
-          else
-            git commit -m "Materialize Mateo y el Algoritmo pages"
-            git push origin HEAD:mateo-book-web
-          fi
+          git commit -m "Materialize Mateo y el Algoritmo pages"
+          git push origin HEAD:mateo-book-web
