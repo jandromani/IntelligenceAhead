@@ -86,7 +86,7 @@ let current=Math.max(1,Math.min(TOTAL,Number(q.get('p'))||Number(localStorage.ge
 let spread=innerWidth>800 && localStorage.getItem('mateo-spread')!=='0';
 let zoom=1;
 const $=id=>document.getElementById(id);
-const pageUrl=n=>'./pages/'+String(n).padStart(3,'0')+'.jpg';
+const pageUrl=n=>'./pages/'+String(n).padStart(3,'0')+'.avif';
 function render(push=true){
  current=Math.max(1,Math.min(TOTAL,current));
  if(spread && current>1 && current%2===0) current-=1;
