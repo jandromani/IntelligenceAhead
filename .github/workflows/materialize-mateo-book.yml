@@ -6,7 +6,7 @@ on:
     branches:
       - mateo-book-web
     paths:
-      - 'mateo/asset-trigger.txt'
+      - 'mateo/bundle-trigger.txt'
 
 permissions:
   contents: write
@@ -19,29 +19,30 @@ jobs:
         with:
           ref: mateo-book-web
           fetch-depth: 0
-      - name: Download 124 book pages
+
+      - name: Reconstruct exact book bundle
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p mateo/pages
-          count=0
-          for list in mateo/asset-part-*.txt; do
-            while IFS='|' read -r n url; do
-              [ -z "$n" ] && continue
-              echo "Downloading page $n"
-              curl -L --fail --retry 4 --retry-delay 2 --connect-timeout 20 --max-time 120 "$url" -o "mateo/pages/$n.jpg"
-              test -s "mateo/pages/$n.jpg"
-              count=$((count+1))
-            done < "$list"
-          done
-          echo "Downloaded $count pages"
+          cat mateo/bundle/part-* > /tmp/mateo-pages.tar
+          tar -xf /tmp/mateo-pages.tar -C mateo/pages
+          count=$(find mateo/pages -maxdepth 1 -name '*.avif' -type f | wc -l)
+          echo "Materialized $count pages"
           test "$count" -eq 124
-      - name: Commit exact page assets
+          test -s mateo/pages/001.avif
+          test -s mateo/pages/124.avif
+
+      - name: Commit book pages
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "Mateo Book Builder"
           git config user.email "actions@users.noreply.github.com"
           git add mateo/pages
-          git commit -m "Materialize Mateo y el Algoritmo pages"
-          git push origin HEAD:mateo-book-web
+          if git diff --cached --quiet; then
+            echo "Pages already materialized"
+          else
+            git commit -m "Materialize Mateo y el Algoritmo pages"
+            git push origin HEAD:mateo-book-web
+          fi
