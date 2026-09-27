@@ -6,7 +6,7 @@ on:
     branches:
       - mateo-book-web
     paths:
-      - 'mateo/asset-urls.txt'
+      - 'mateo/asset-urls-*.txt'
 
 permissions:
   contents: write
@@ -21,19 +21,21 @@ jobs:
           ref: mateo-book-web
           fetch-depth: 0
 
-      - name: Download book pages
+      - name: Download 124 book pages
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p mateo/pages
           count=0
-          while IFS='|' read -r n url; do
-            [ -z "$n" ] && continue
-            echo "Downloading page $n"
-            curl -L --fail --retry 4 --retry-delay 2 --connect-timeout 20 --max-time 120 "$url" -o "mateo/pages/$n.jpg"
-            test -s "mateo/pages/$n.jpg"
-            count=$((count+1))
-          done < mateo/asset-urls.txt
+          for list in mateo/asset-urls-*.txt; do
+            while IFS='|' read -r n url; do
+              [ -z "$n" ] && continue
+              echo "Downloading page $n"
+              curl -L --fail --retry 4 --retry-delay 2 --connect-timeout 20 --max-time 120 "$url" -o "mateo/pages/$n.jpg"
+              test -s "mateo/pages/$n.jpg"
+              count=$((count+1))
+            done < "$list"
+          done
           echo "Downloaded $count pages"
           test "$count" -eq 124
 
