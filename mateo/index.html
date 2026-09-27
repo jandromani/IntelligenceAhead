@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111318">
+<title>Mateo y el Algoritmo · Lector</title>
+<meta name="description" content="Mateo y el Algoritmo — libro visual de Alejandro Baratas sobre algoritmos, atención y pensamiento crítico.">
+<style>
+:root{--bg:#0d0f13;--panel:#151820;--panel2:#1d212b;--ink:#f7f3ea;--muted:#aeb5c3;--accent:#ff5b44;--blue:#4f83ff;--line:#2b303c;--r:16px}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+button,input{font:inherit}button{color:inherit}
+.app{height:100dvh;display:grid;grid-template-rows:64px 1fr 60px}
+.top{display:flex;align-items:center;gap:12px;padding:0 18px;background:rgba(13,15,19,.96);border-bottom:1px solid var(--line);z-index:20}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}.mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#ff5b44,#ffbe3d);display:grid;place-items:center;color:#111;font-weight:900}
+.brandText{min-width:0}.brandText b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.brandText small{color:var(--muted)}
+.spacer{flex:1}.iconBtn,.modeBtn{height:38px;min-width:38px;border:1px solid var(--line);background:var(--panel);border-radius:11px;display:grid;place-items:center;cursor:pointer}
+.modeBtn{padding:0 12px}.iconBtn:hover,.modeBtn:hover{background:var(--panel2)}
+.stage{position:relative;min-height:0;display:grid;place-items:center;padding:18px 68px 12px;background:radial-gradient(circle at 50% 15%,#212736 0,#11151d 35%,#090b0f 80%)}
+.book{height:100%;max-height:calc(100dvh - 156px);max-width:100%;display:flex;align-items:center;justify-content:center;gap:8px;transform-origin:center;transition:transform .15s ease}
+.page{height:100%;max-width:min(48vw,720px);aspect-ratio:1000/1414;object-fit:contain;background:#fff;box-shadow:0 22px 70px #000a;border-radius:5px;user-select:none;-webkit-user-drag:none}
+.book.single .page{max-width:min(82vw,820px)}.page.hidden{display:none}
+.navSide{position:absolute;top:0;bottom:0;width:60px;border:0;background:transparent;color:#fff8;font-size:36px;cursor:pointer;z-index:5}.navSide:hover{color:#fff;background:#ffffff08}.prev{left:0}.next{right:0}
+.bottom{display:flex;align-items:center;gap:12px;padding:0 18px;background:#0d0f13;border-top:1px solid var(--line);z-index:20}
+.progress{flex:1;accent-color:var(--accent)}.counter{min-width:108px;text-align:center;font-variant-numeric:tabular-nums;color:var(--muted)}
+.drawer{position:fixed;z-index:40;inset:64px auto 60px 0;width:min(390px,92vw);background:#11151df5;border-right:1px solid var(--line);transform:translateX(-102%);transition:.22s ease;display:grid;grid-template-rows:auto auto 1fr;backdrop-filter:blur(18px)}
+.drawer.open{transform:none}.drawerHead{padding:18px 18px 10px;display:flex;align-items:center;justify-content:space-between}.drawerHead h2{margin:0;font-size:18px}.tabs{display:flex;gap:8px;padding:0 18px 12px}.tabs button{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 11px;cursor:pointer}.tabs button.on{background:var(--blue);border-color:var(--blue)}
+.drawerBody{overflow:auto;padding:0 14px 20px}.toc{display:none}.toc.on{display:block}.thumbs{display:none;grid-template-columns:repeat(3,1fr);gap:9px}.thumbs.on{display:grid}
+.thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#222;cursor:pointer}.thumb img{width:100%;display:block}.thumb span{position:absolute;right:4px;bottom:4px;background:#000b;padding:2px 5px;border-radius:5px;font-size:10px}
+.chapter{display:block;width:100%;text-align:left;margin:7px 0;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px;cursor:pointer}.chapter b{display:block}.chapter small{color:var(--muted)}
+.overlay{position:fixed;inset:64px 0 60px;background:#0006;z-index:30;display:none}.overlay.on{display:block}
+.toast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(20px);opacity:0;transition:.2s;background:#202531;border:1px solid #343b4b;border-radius:999px;padding:9px 14px;z-index:60;color:#fff}.toast.on{opacity:1;transform:translateX(-50%)}
+.help{position:fixed;inset:0;z-index:80;display:none;place-items:center;background:#000b;padding:20px}.help.on{display:grid}.helpCard{max-width:540px;background:#151922;border:1px solid #343b4b;border-radius:18px;padding:24px}.helpCard h2{margin-top:0}.keys{display:grid;grid-template-columns:auto 1fr;gap:9px 14px}.kbd{background:#252b37;border:1px solid #3b4353;border-radius:7px;padding:4px 8px;text-align:center}
+@media(max-width:800px){.app{grid-template-rows:56px 1fr 58px}.top{padding:0 10px}.brandText small{display:none}.modeBtn#spreadBtn{display:none}.stage{padding:8px 38px}.book{max-height:calc(100dvh - 130px)}.book .page{max-width:calc(100vw - 80px)}.book .page:nth-child(2){display:none!important}.navSide{width:36px;font-size:28px}.bottom{padding:0 10px;gap:8px}.counter{min-width:74px;font-size:13px}.modeBtn{padding:0 9px}.drawer{inset:56px auto 58px 0}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <button class="iconBtn" id="menuBtn" aria-label="Abrir índice">☰</button>
+  <div class="brand"><div class="mark">M</div><div class="brandText"><b>Mateo y el Algoritmo</b><small>Alejandro Baratas · edición web</small></div></div>
+  <div class="spacer"></div>
+  <button class="modeBtn" id="spreadBtn" title="Una / dos páginas">▣</button>
+  <button class="iconBtn" id="zoomOut" title="Alejar">−</button>
+  <button class="iconBtn" id="zoomIn" title="Acercar">＋</button>
+  <button class="iconBtn" id="fullBtn" title="Pantalla completa">⛶</button>
+  <button class="iconBtn" id="helpBtn" title="Ayuda">?</button>
+</header>
+
+<main class="stage" id="stage">
+  <button class="navSide prev" id="prev" aria-label="Anterior">‹</button>
+  <div class="book" id="book"><img class="page" id="p1" alt=""><img class="page" id="p2" alt=""></div>
+  <button class="navSide next" id="next" aria-label="Siguiente">›</button>
+</main>
+
+<footer class="bottom">
+  <button class="modeBtn" id="firstBtn">Inicio</button>
+  <input class="progress" id="progress" type="range" min="1" max="124" value="1" aria-label="Página">
+  <div class="counter" id="counter">1 / 124</div>
+  <button class="modeBtn" id="shareBtn">Compartir</button>
+</footer>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer">
+ <div class="drawerHead"><h2>Explorar el libro</h2><button class="iconBtn" id="closeDrawer">×</button></div>
+ <div class="tabs"><button class="on" data-tab="toc">Índice</button><button data-tab="thumbs">Miniaturas</button></div>
+ <div class="drawerBody"><div class="toc on" id="toc"></div><div class="thumbs" id="thumbs"></div></div>
+</aside>
+<div class="toast" id="toast"></div>
+<div class="help" id="help"><div class="helpCard"><h2>Cómo leer</h2><div class="keys"><span class="kbd">← →</span><span>Cambiar de página</span><span class="kbd">Espacio</span><span>Siguiente página</span><span class="kbd">F</span><span>Pantalla completa</span><span class="kbd">M</span><span>Abrir índice</span><span class="kbd">+ −</span><span>Zoom</span></div><p>En móvil también puedes deslizar a izquierda o derecha. Tu última página se guarda automáticamente en este dispositivo.</p><button class="modeBtn" onclick="help.classList.remove('on')">Entendido</button></div></div>
+
+<script>
+const TOTAL=124;
+const chapters=[
+ ['Portada',1],['Dedicatoria',2],['Cómo usar este libro',3],['Quién soy',4],['Índice',5],
+ ['Acto I · Nacer',8],['Acto II · Aprender',33],['Acto III · Cerrar el mundo',44],
+ ['Acto IV · Dos realidades',54],['Acto V · Recuperar el control',64],
+ ['Acto VI · Proteger tu pensamiento crítico',74],['Acto VII · Entender el sistema',84],
+ ['Acto VIII · Practicar la libertad',94],['Acto IX · Compartir lo aprendido',104],
+ ['Acto X · Tu criterio en acción',114],['Contraportada',124]
+];
+const q=new URLSearchParams(location.search);
+let current=Math.max(1,Math.min(TOTAL,Number(q.get('p'))||Number(localStorage.getItem('mateo-page'))||1));
+let spread=innerWidth>800 && localStorage.getItem('mateo-spread')!=='0';
+let zoom=1;
+const $=id=>document.getElementById(id);
+const pageUrl=n=>'./pages/'+String(n).padStart(3,'0')+'.jpg';
+function render(push=true){
+ current=Math.max(1,Math.min(TOTAL,current));
+ if(spread && current>1 && current%2===0) current-=1;
+ $('book').classList.toggle('single',!spread||innerWidth<=800);
+ $('p1').src=pageUrl(current); $('p1').alt='Página '+current;
+ const second=spread&&innerWidth>800&&current<TOTAL;
+ $('p2').classList.toggle('hidden',!second);
+ if(second){$('p2').src=pageUrl(current+1);$('p2').alt='Página '+(current+1)}
+ $('counter').textContent=second?current+'–'+(current+1)+' / '+TOTAL:current+' / '+TOTAL;
+ $('progress').value=current;
+ $('book').style.transform='scale('+zoom+')';
+ localStorage.setItem('mateo-page',current);
+ if(push){history.replaceState(null,'','?p='+current)}
+ [current-2,current-1,current+1,current+2,current+3].filter(n=>n>=1&&n<=TOTAL).forEach(n=>{const i=new Image;i.src=pageUrl(n)});
+}
+function step(dir){current+=spread&&innerWidth>800?2*dir:dir;render()}
+function go(n){current=n;render();closeDrawer()}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');setTimeout(()=>e.classList.remove('on'),1500)}
+$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('firstBtn').onclick=()=>go(1);
+$('progress').oninput=e=>{current=Number(e.target.value);render()};
+$('spreadBtn').onclick=()=>{spread=!spread;localStorage.setItem('mateo-spread',spread?'1':'0');render();toast(spread?'Doble página':'Una página')};
+$('zoomIn').onclick=()=>{zoom=Math.min(1.8,zoom+.1);render(false)};
+$('zoomOut').onclick=()=>{zoom=Math.max(.65,zoom-.1);render(false)};
+$('fullBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();
+$('shareBtn').onclick=async()=>{const u=location.href;try{if(navigator.share)await navigator.share({title:'Mateo y el Algoritmo',url:u});else{await navigator.clipboard.writeText(u);toast('Enlace copiado')}}catch(e){}};
+const drawer=$('drawer'),overlay=$('overlay');function openDrawer(){drawer.classList.add('open');overlay.classList.add('on')}function closeDrawer(){drawer.classList.remove('open');overlay.classList.remove('on')}
+$('menuBtn').onclick=openDrawer;$('closeDrawer').onclick=closeDrawer;overlay.onclick=closeDrawer;
+$('helpBtn').onclick=()=>$('help').classList.add('on');$('help').onclick=e=>{if(e.target===$('help'))$('help').classList.remove('on')};
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');$('toc').classList.toggle('on',b.dataset.tab==='toc');$('thumbs').classList.toggle('on',b.dataset.tab==='thumbs')});
+chapters.forEach(([t,n])=>{const b=document.createElement('button');b.className='chapter';b.innerHTML='<b>'+t+'</b><small>Página '+n+'</small>';b.onclick=()=>go(n);$('toc').appendChild(b)});
+for(let n=1;n<=TOTAL;n++){const d=document.createElement('div');d.className='thumb';d.innerHTML='<img loading="lazy" src="'+pageUrl(n)+'" alt="Página '+n+'"><span>'+n+'</span>';d.onclick=()=>go(n);$('thumbs').appendChild(d)}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();step(1)}if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}if(e.key.toLowerCase()==='f')$('fullBtn').click();if(e.key.toLowerCase()==='m')openDrawer();if(e.key==='+')$('zoomIn').click();if(e.key==='-')$('zoomOut').click();if(e.key==='Escape')closeDrawer()});
+let sx=0,sy=0;$('stage').addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});$('stage').addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)){dx<0?step(1):step(-1)}},{passive:true});
+addEventListener('resize',()=>render(false));render();
+</script>
+</body></html>
