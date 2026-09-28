@@ -4,6 +4,6 @@
   "version":"2.0.0",
   "type":"module",
   "scripts":{"build":"node build.mjs && vite build"},
-  "dependencies":{"@huggingface/transformers":"4.2.0","three":"0.180.0"},
-  "devDependencies":{"vite":"6.1.0"}
+  "dependencies":{"@huggingface/transformers":"4.3.0","three":"0.180.0"},
+  "devDependencies":{"vite":"6.4.3"}
 }
