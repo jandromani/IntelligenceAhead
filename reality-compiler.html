@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>Reality Compiler — booting</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#050505;color:#f7f4ee;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+main{height:100%;display:grid;place-items:center}
+.wrap{width:min(620px,86vw)}
+h1{font:600 clamp(40px,8vw,86px)/.9 system-ui;margin:0 0 24px;letter-spacing:-.07em}
+p{color:#8f918e;line-height:1.6}
+.bar{height:2px;background:#191919;overflow:hidden;margin-top:28px}.bar:after{content:"";display:block;width:38%;height:100%;background:#cbff47;animation:a 1s infinite ease-in-out}@keyframes a{50%{transform:translateX(165%)}}small{color:#5e615e}
+</style>
+</head>
+<body><main><div class="wrap"><small>HUGGING FACE · WEBGPU · WORLD ENGINE</small><h1>REALITY<br>COMPILER</h1><p id="s">Reconstructing application payload…</p><div class="bar"></div></div></main>
+<script>
+(async()=>{
+const s=document.getElementById('s');
+try{
+ s.textContent='Loading compressed world engine…';
+ const [a,b]=await Promise.all([
+   fetch('/reality-compiler-parts/gz-00.txt',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('payload 1 '+r.status);return r.text()}),
+   fetch('/reality-compiler-parts/gz-01.txt',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('payload 2 '+r.status);return r.text()})
+ ]);
+ const raw=atob((a+b).replace(/\s/g,''));
+ const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+ if(!('DecompressionStream' in window)) throw Error('This browser needs Chromium/Edge with DecompressionStream support.');
+ s.textContent='Decompressing Reality Compiler…';
+ const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+ const html=await new Response(stream).text();
+ document.open(); document.write(html); document.close();
+}catch(e){
+ console.error(e);
+ s.textContent='Boot failed: '+e.message;
+}
+})();
+</script></body></html>
