@@ -16,6 +16,7 @@ const SIZE = 504;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 const C0 = 0.28209479177387814;
+const PRO_JOB_KEY = 'reality-compiler-pro-job-v1';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['landing','capture','analyze','world'];
@@ -77,6 +78,13 @@ function installV4UI(){
       <button data-mode="metric"><b>METRIC</b><small>LiDAR / RGB-D</small></button>`;
     const actions=card.querySelector('.actions'); card.insertBefore(wrap,actions);
     wrap.querySelectorAll('button').forEach(btn=>btn.onclick=()=>setMode(btn.dataset.mode));
+  }
+  const saved=loadSavedProJob();
+  if(card && saved && !$('resumeJobBtn')){
+    const btn=document.createElement('button');
+    btn.id='resumeJobBtn';btn.className='wide ghost';btn.textContent='RESUME GPU JOB';
+    btn.onclick=resumeSavedProJob;
+    card.appendChild(btn);
   }
   refreshProStatus();
 }
@@ -483,6 +491,57 @@ async function getProConfig(force=false){
   const j=await r.json();state.proConfig=j;state.proConfigAt=Date.now();return j;
 }
 
+function loadSavedProJob(){
+  try{
+    const x=JSON.parse(localStorage.getItem(PRO_JOB_KEY)||'null');
+    if(!x?.job_id||!x?.access_token||!x?.backend)return null;
+    if(Date.now()-(x.saved_at||0)>26*3600*1000){localStorage.removeItem(PRO_JOB_KEY);return null;}
+    return x;
+  }catch{return null;}
+}
+function rememberProJob(cfg,job,mode){
+  try{
+    localStorage.setItem(PRO_JOB_KEY,JSON.stringify({
+      backend:cfg.backend,job_id:job.job_id,access_token:job.access_token,
+      mode,saved_at:Date.now()
+    }));
+  }catch{}
+}
+async function loadWorkerResult(cfg,job,done){
+  setStep('export',100,done.splats?`${Number(done.splats).toLocaleString()} GS`:'DONE');
+  status('DOWNLOAD','Streaming optimized Gaussian PLY','Loading trained splats into SuperSplat',98);
+  const rr=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}/result`,{
+    headers:{'X-Reality-Job-Token':job.access_token}
+  });
+  if(!rr.ok)throw new Error(`GPU result HTTP ${rr.status}: ${await rr.text()}`);
+  const blob=await rr.blob();
+  if(blob.size<1024)throw new Error('GPU worker returned an unexpectedly small PLY.');
+  state.plyBlob=blob;
+  if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);
+  state.plyUrl=URL.createObjectURL(blob);
+  setStep('viewer',25,'LOAD');
+  await openWorldBlob(state.plyUrl,state.mode==='ultra'?'ULTRA · SPLATFACTO BIG 30K':'PRO · SPLATFACTO 30K');
+  setStep('viewer',100,'LIVE');
+  status('DONE','Optimized room-scale Gaussian world',`${(blob.size/1048576).toFixed(1)} MB · ${done.splats?Number(done.splats).toLocaleString()+' splats · ':''}30K training`,100);
+}
+async function resumeSavedProJob(){
+  const saved=loadSavedProJob();
+  if(!saved)return toast('No resumable GPU job');
+  state.mode=saved.mode==='ultra'?'ultra':'pro';
+  show('analyze');buildSteps();
+  status('RESUME','Reconnecting to GPU reconstruction',saved.job_id,3);
+  try{
+    const cfg={backend:saved.backend};
+    const done=await pollWorkerJob(cfg,saved);
+    await loadWorkerResult(cfg,saved,done);
+  }catch(err){
+    console.error(err);diag(err.stack||err.message);
+    modal('Could not resume GPU job',`<p>${escapeHtml(err.message)}</p><p>The worker retains completed results for about 24 hours by default.</p>`);
+    if(/404|Unknown job|Invalid job/i.test(String(err.message)))localStorage.removeItem(PRO_JOB_KEY);
+    show('landing');
+  }
+}
+
 function workerStep(stage,progress){
   const p=Math.max(0,Math.min(100,Number(progress)||0));
   if(stage==='queued'){setStep('upload',10,'QUEUED');}
@@ -548,26 +607,12 @@ async function submitPro({video=null,images=[]}){
     if(!create.ok)throw new Error(`GPU job creation HTTP ${create.status}: ${await create.text()}`);
     const job=await create.json();
     state.proJob=job;
+    rememberProJob(cfg,job,ultra?'ultra':'pro');
     setStep('upload',100,'DONE');
     diag(JSON.stringify({backend:cfg.backend,job_id:job.job_id,mode:job.mode,frames_target:job.frames_target},null,2));
 
     const done=await pollWorkerJob(cfg,job);
-    setStep('export',100,done.splats?`${Number(done.splats).toLocaleString()} GS`:'DONE');
-    status('DOWNLOAD','Streaming optimized Gaussian PLY','Loading trained splats into SuperSplat',98);
-    const rr=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}/result`,{
-      headers:{'X-Reality-Job-Token':job.access_token}
-    });
-    if(!rr.ok)throw new Error(`GPU result HTTP ${rr.status}: ${await rr.text()}`);
-    const blob=await rr.blob();
-    if(blob.size<1024)throw new Error('GPU worker returned an unexpectedly small PLY.');
-
-    state.plyBlob=blob;
-    if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);
-    state.plyUrl=URL.createObjectURL(blob);
-    setStep('viewer',25,'LOAD');
-    await openWorldBlob(state.plyUrl,ultra?'ULTRA · SPLATFACTO BIG 30K':'PRO · SPLATFACTO 30K');
-    setStep('viewer',100,'LIVE');
-    status('DONE','Optimized room-scale Gaussian world',`${(blob.size/1048576).toFixed(1)} MB · ${done.splats?Number(done.splats).toLocaleString()+' splats · ':''}30K training`,100);
+    await loadWorkerResult(cfg,job,done);
   }catch(err){
     console.error(err);diag(err.stack||err.message);
     modal('PRO reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p><b>INSTANT</b> remains local. PRO/ULTRA now intentionally require our own private CUDA worker; the public Hugging Face Space is no longer presented as production infrastructure.</p>`);
