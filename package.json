@@ -1,14 +1,19 @@
 {
-  "name":"reality-compiler-v3",
-  "private":true,
-  "version":"3.0.0",
-  "type":"module",
-  "scripts":{"build":"node build.mjs && vite build"},
-  "dependencies":{
-    "@huggingface/transformers":"4.3.0",
-    "@playcanvas/supersplat-viewer":"1.35.2",
-    "onnxruntime-web":"1.23.2",
-    "playcanvas":"2.22.4"
+  "name": "reality-compiler-v4",
+  "private": true,
+  "version": "4.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs && vite build"
   },
-  "devDependencies":{"vite":"6.4.3"}
+  "dependencies": {
+    "@huggingface/transformers": "4.3.0",
+    "@playcanvas/supersplat-viewer": "1.35.2",
+    "onnxruntime-web": "1.23.2",
+    "playcanvas": "2.22.4",
+    "@gradio/client": "2.7.0"
+  },
+  "devDependencies": {
+    "vite": "6.4.3"
+  }
 }
