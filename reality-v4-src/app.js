@@ -61,7 +61,7 @@ function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metri
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
-  if(brandSmall) brandSmall.textContent='V5 · ROOM-SCALE GAUSSIAN PIPELINE';
+  if(brandSmall) brandSmall.textContent='V6 · PRIVATE GPU GSPLAT PIPELINE';
   const health=document.querySelector('.health');
   if(health && !$('proChip')){
     const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
@@ -72,8 +72,8 @@ function installV4UI(){
     wrap.id='modeSwitch'; wrap.className='modeSwitch';
     wrap.innerHTML=`
       <button data-mode="instant" class="active"><b>INSTANT</b><small>4-view · local</small></button>
-      <button data-mode="pro"><b>PRO</b><small>full scan · DA3 GS</small></button>
-      <button data-mode="ultra"><b>ULTRA</b><small>high-res · DA3 GS</small></button>
+      <button data-mode="pro"><b>PRO</b><small>Splatfacto · 30K</small></button>
+      <button data-mode="ultra"><b>ULTRA</b><small>Splatfacto Big · 30K</small></button>
       <button data-mode="metric"><b>METRIC</b><small>LiDAR / RGB-D</small></button>`;
     const actions=card.querySelector('.actions'); card.insertBefore(wrap,actions);
     wrap.querySelectorAll('button').forEach(btn=>btn.onclick=()=>setMode(btn.dataset.mode));
@@ -574,6 +574,6 @@ function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 
 // Explain advanced engines without pretending they run in-browser when they do not.
 addEventListener('keydown',(e)=>{
-  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / PRIVATE GPU:</b> video/images → COLMAP camera solve → Nerfstudio Splatfacto/gsplat → 30,000 iterative steps → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / PRIVATE GPU:</b> Splatfacto Big, more source views and denser Gaussian optimization.</p><p><b>LAB:</b> public DA3 Spaces remain audit/reference only; they are not the commercial backend.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
+  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V6',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / PRIVATE GPU:</b> video/images → COLMAP camera solve → Nerfstudio Splatfacto/gsplat → 30,000 iterative steps → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / PRIVATE GPU:</b> Splatfacto Big, more source views and denser Gaussian optimization.</p><p><b>LAB:</b> public DA3 Spaces remain audit/reference only; they are not the commercial backend.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
 });
 
