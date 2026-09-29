@@ -13,7 +13,12 @@ COPY pipeline.py /app/pipeline.py
 COPY keyframes.py /app/keyframes.py
 
 RUN python -m py_compile /app/main.py /app/pipeline.py /app/keyframes.py \
-    && python -c "import main; print(main.health())"
+    && python -c "import main; print(main.health())" \
+    && command -v ffmpeg \
+    && command -v ffprobe \
+    && command -v ns-process-data \
+    && command -v ns-train \
+    && command -v ns-export
 
 ENV REALITY_WORKER_ROOT=/data/reality-jobs \
     REALITY_GPU_CONCURRENCY=1 \
