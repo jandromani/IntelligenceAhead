@@ -51,6 +51,11 @@ const newViewer=`  const baseOptions={
 
 if(!app.includes(oldViewer)) throw new Error('V3 patch: viewer block not found');
 app=app.replace(oldViewer,newViewer);
-fs.writeFileSync(appPath,app);\n\n// Temporary preview source export for V4 integration work.\nfs.mkdirSync('public',{recursive:true});\nfs.copyFileSync(appPath,'public/reality-v4-source.js');\nfs.copyFileSync('src/style.css','public/reality-v4-style.css');
+fs.writeFileSync(appPath,app);
+
+// Temporary preview source export for V4 integration work.
+fs.mkdirSync('public',{recursive:true});
+fs.copyFileSync(appPath,'public/reality-v4-source.js');
+fs.copyFileSync('src/style.css','public/reality-v4-style.css');
 
 console.log('Reality Compiler V3 multiview sources materialized + viewer hardening applied');
