@@ -30,6 +30,12 @@ const state = {
   sourceFrame: null,
   semantic: null,
   viewer: null,
+  mode: 'instant',
+  proConfig: null,
+  proConfigAt: 0,
+  proJob: null,
+  videoFile: null,
+  photoFiles: [],
 };
 
 function show(name){
@@ -50,13 +56,77 @@ function setHealth(){
 }
 setHealth(); addEventListener('online',setHealth); addEventListener('offline',setHealth);
 
+function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metric' ? 4 : 16); }
+
+function installV4UI(){
+  const brandSmall=document.querySelector('.brand small');
+  if(brandSmall) brandSmall.textContent='V4 · INSTANT + PRO GAUSSIAN PIPELINE';
+  const health=document.querySelector('.health');
+  if(health && !$('proChip')){
+    const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
+  }
+  const card=document.querySelector('.capture-card');
+  if(card && !$('modeSwitch')){
+    const wrap=document.createElement('div');
+    wrap.id='modeSwitch'; wrap.className='modeSwitch';
+    wrap.innerHTML=`
+      <button data-mode="instant" class="active"><b>INSTANT</b><small>4-view · local</small></button>
+      <button data-mode="pro"><b>PRO</b><small>7k gsplat · GPU</small></button>
+      <button data-mode="ultra"><b>ULTRA</b><small>30k gsplat · GPU</small></button>
+      <button data-mode="metric"><b>METRIC</b><small>LiDAR / RGB-D</small></button>`;
+    const actions=card.querySelector('.actions'); card.insertBefore(wrap,actions);
+    wrap.querySelectorAll('button').forEach(btn=>btn.onclick=()=>setMode(btn.dataset.mode));
+  }
+  refreshProStatus();
+}
+
+function setMode(mode){
+  state.mode=mode;
+  document.querySelectorAll('#modeSwitch button').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
+  const copy=document.querySelector('.capture-card > p');
+  if(copy){
+    copy.textContent=mode==='instant'
+      ? 'Fast local preview. Four overlapping views are reconstructed in your browser.'
+      : mode==='pro'
+      ? 'Commercial path. Upload a slow room scan; DA3-BASE solves cameras and gsplat optimizes 7,000 steps on the GPU node.'
+      : mode==='ultra'
+      ? 'Maximum quality path. DA3-BASE + 30,000-step gsplat optimization. Best for a final property deliverable.'
+      : 'Metric path. Import an RGB-D / LiDAR splat now; automatic SplaTAM ingestion is the next wired backend.';
+  }
+  const engine=$('engineChip');
+  if(engine) engine.textContent=mode==='instant'?'DA3 · LOCAL':mode==='metric'?'LIDAR · IMPORT':mode.toUpperCase()+' · GPU';
+  renderFrames();
+}
+
+async function refreshProStatus(){
+  const chip=$('proChip'); if(!chip)return;
+  try{
+    const r=await fetch('/api/reality-pro-status',{cache:'no-store'});
+    const j=await r.json();
+    if(j.configured && j.ok){
+      chip.textContent='PRO GPU · READY';chip.style.color='var(--lime)';
+    }else if(j.configured){
+      chip.textContent='PRO GPU · DOWN';chip.style.color='var(--red)';
+    }else{
+      chip.textContent='PRO GPU · UNWIRED';chip.style.color='#d6bd69';
+    }
+  }catch{
+    chip.textContent='PRO GPU · UNKNOWN';chip.style.color='#d6bd69';
+  }
+}
+
+installV4UI();
+
 function setStep(name, pct, note=''){
   const el=document.querySelector(`[data-step="${name}"]`); if(!el) return;
   el.querySelector('u').style.width=`${pct}%`;
   el.querySelector('b').textContent = note || (pct>=100?'DONE':`${Math.round(pct)}%`);
 }
 function buildSteps(){
-  const items=[['keyframes','KEYFRAMES'],['weights','DA3 WEIGHTS'],['infer','MULTIVIEW INFERENCE'],['fusion','POSE FUSION'],['gauss','GAUSSIAN PACK'],['viewer','SPLAT VIEWER']];
+  const remote=state.mode==='pro'||state.mode==='ultra';
+  const items=remote
+    ? [['upload','GPU UPLOAD'],['infer','DA3-BASE CAMERAS'],['fusion','COLMAP SEED'],['gauss',state.mode==='ultra'?'GSPLAT 30K':'GSPLAT 7K'],['export','PLY EXPORT'],['viewer','SPLAT VIEWER']]
+    : [['keyframes','KEYFRAMES'],['weights','DA3 WEIGHTS'],['infer','MULTIVIEW INFERENCE'],['fusion','POSE FUSION'],['gauss','GAUSSIAN PACK'],['viewer','SPLAT VIEWER']];
   $('steps').innerHTML=items.map(([id,label])=>`<div class="step" data-step="${id}"><div><span>${label}</span><b>WAIT</b></div><i><u></u></i></div>`).join('');
 }
 function status(kicker,text,sub,pct){ $('statusKicker').textContent=kicker; $('statusText').textContent=text; $('statusSub').textContent=sub||''; $('mainProgress').style.width=`${pct||0}%`; }
@@ -95,8 +165,9 @@ async function sourceToFrame(source, label='VIEW'){
 }
 function renderFrames(){
   $('frames').innerHTML=state.frames.map((f,i)=>`<figure><img src="${f.url}"><figcaption>V${i+1} · ${Math.round(f.sharp)}</figcaption></figure>`).join('');
-  $('viewCount').textContent=`${state.frames.length} / 4`;
-  $('finishCaptureBtn').disabled=state.frames.length<4;
+  const needed=targetViews();
+  $('viewCount').textContent=`${state.frames.length} / ${needed}`;
+  $('finishCaptureBtn').disabled=state.frames.length<needed;
 }
 
 $('videoBtn').onclick=()=> $('videoInput').click();
@@ -104,8 +175,18 @@ $('photosBtn').onclick=()=> $('photosInput').click();
 $('splatBtn').onclick=()=> $('splatInput').click();
 $('recordBtn').onclick=startCamera;
 
-$('videoInput').onchange=async(e)=>{ const f=e.target.files?.[0]; if(f) await extractVideoFrames(f); };
-$('photosInput').onchange=async(e)=>{ const files=[...(e.target.files||[])]; if(files.length) await choosePhotoFrames(files); };
+$('videoInput').onchange=async(e)=>{
+  const f=e.target.files?.[0]; if(!f)return; state.videoFile=f;
+  if(state.mode==='pro'||state.mode==='ultra') await submitPro({video:f});
+  else if(state.mode==='metric') metricNotYet();
+  else await extractVideoFrames(f);
+};
+$('photosInput').onchange=async(e)=>{
+  const files=[...(e.target.files||[])]; if(!files.length)return; state.photoFiles=files;
+  if(state.mode==='pro'||state.mode==='ultra') await submitPro({images:files.slice(0,72)});
+  else if(state.mode==='metric') metricNotYet();
+  else await choosePhotoFrames(files);
+};
 $('splatInput').onchange=async(e)=>{ const file=e.target.files?.[0]; if(file) openExistingSplat(file); };
 
 async function startCamera(){
@@ -132,16 +213,27 @@ $('autoCaptureBtn').onclick=()=>{
   $('autoCaptureBtn').textContent='SCANNING…'; state.autoTimer=setInterval(()=>captureCameraFrame(true),900);
 };
 async function captureCameraFrame(auto){
-  if(state.frames.length>=4){clearInterval(state.autoTimer);state.autoTimer=null;$('autoCaptureBtn').textContent='AUTO SCAN';return;}
+  const needed=targetViews();
+  if(state.frames.length>=needed){clearInterval(state.autoTimer);state.autoTimer=null;$('autoCaptureBtn').textContent='AUTO SCAN';return;}
   const v=$('camera');if(v.readyState<2)return; const candidate=await sourceToFrame(v,`CAM ${state.frames.length+1}`);
   const prev=state.frames.at(-1);const diff=prev?diffOf(candidate.sig,prev.sig):999;
   $('motion').textContent=diff>34?'WIDE':diff>16?'GOOD':'LOW'; $('motion').style.color=diff>16?'var(--lime)':'#d6bd69';
   if(auto && (candidate.sharp<95 || diff<15)){URL.revokeObjectURL(candidate.url);return;}
-  state.frames.push(candidate); renderFrames(); const cover=Math.min(100,state.frames.length*25);$('coverage').textContent=`${cover}%`;$('coverageBar').style.width=`${cover}%`;
+  state.frames.push(candidate); renderFrames(); const cover=Math.min(100,Math.round(state.frames.length/needed*100));$('coverage').textContent=`${cover}%`;$('coverageBar').style.width=`${cover}%`;
   const guides=['MOVE SLOWLY TO THE RIGHT →','ARC AROUND THE SCENE ↗','CAPTURE THE OTHER SIDE ←','ENOUGH PARALLAX · BUILD'];$('captureGuide').textContent=guides[Math.min(state.frames.length,4)-1]||guides[0];
-  if(state.frames.length>=4){clearInterval(state.autoTimer);state.autoTimer=null;$('autoCaptureBtn').textContent='AUTO SCAN';}
+  if(state.frames.length>=needed){clearInterval(state.autoTimer);state.autoTimer=null;$('autoCaptureBtn').textContent='AUTO SCAN';}
 }
-$('finishCaptureBtn').onclick=()=>{stopCamera(); compileWorld(state.frames.slice(0,4));};
+$('finishCaptureBtn').onclick=async()=>{
+  stopCamera();
+  if(state.mode==='pro'||state.mode==='ultra'){
+    const files=state.frames.map((f,i)=>new File([f.blob],`capture-${String(i+1).padStart(3,'0')}.jpg`,{type:'image/jpeg'}));
+    await submitPro({images:files});
+  }else if(state.mode==='metric'){
+    metricNotYet();
+  }else{
+    compileWorld(state.frames.slice(0,4));
+  }
+};
 
 async function extractVideoFrames(file){
   show('analyze'); buildSteps(); status('VIDEO ANALYSIS','Finding four strong viewpoints','Sharpness + temporal spread + appearance diversity',4);diag('Decoding video locally. No upload.');
@@ -313,10 +405,96 @@ $('semanticBtn').onclick=async()=>{
 };
 async function gpuFp16(){try{const a=await navigator.gpu?.requestAdapter();return !!a?.features?.has('shader-f16')}catch{return false}}
 
+function metricNotYet(){
+  modal('METRIC PIPELINE',`<p><b>Direct LiDAR/splat import is live now.</b></p><p>Use <b>OPEN PLY / SPLAT / SOG</b> with a Scaniverse, Polycam, SplaTAM or other RGB-D export. Automatic SplaTAM capture ingestion is scaffolded for the private GPU node but is not yet exposed as a browser capture protocol.</p>`);
+}
+
+async function getProConfig(force=false){
+  if(!force && state.proConfig && Date.now()-state.proConfigAt<220000)return state.proConfig;
+  const r=await fetch('/api/reality-pro-config',{cache:'no-store'});
+  if(!r.ok)throw new Error(`PRO config HTTP ${r.status}`);
+  const cfg=await r.json();state.proConfig=cfg;state.proConfigAt=Date.now();return cfg;
+}
+
+async function proFetch(path,options={}){
+  let cfg=await getProConfig();
+  if(!cfg.configured)throw new Error('PRO GPU node is not connected yet. REALITY_PRO_BACKEND_URL and REALITY_PRO_SHARED_SECRET must point to the deployed GPU container.');
+  const makeHeaders=()=>({...(options.headers||{}),Authorization:`Bearer ${cfg.token}`});
+  let r=await fetch(cfg.backend+path,{...options,headers:makeHeaders()});
+  if(r.status===401){
+    cfg=await getProConfig(true);
+    r=await fetch(cfg.backend+path,{...options,headers:{...(options.headers||{}),Authorization:`Bearer ${cfg.token}`}});
+  }
+  return r;
+}
+
+function mapProProgress(job){
+  const p=Math.max(0,Math.min(1,Number(job.progress||0)));
+  if(p<.08){setStep('upload',Math.max(20,p/.08*100),'UPLOADED');}
+  else setStep('upload',100,'DONE');
+  if(p>=.08)setStep('infer',Math.min(100,Math.max(5,(p-.08)/.16*100)),p>=.24?'DONE':'RUNNING');
+  if(p>=.24)setStep('fusion',Math.min(100,Math.max(5,(p-.24)/.08*100)),p>=.32?'DONE':'SEED');
+  if(p>=.32)setStep('gauss',Math.min(99,Math.max(2,(p-.32)/.60*100)),job.status==='completed'?'DONE':'OPTIMIZING');
+  if(p>=.92)setStep('export',Math.min(100,(p-.92)/.08*100),job.status==='completed'?'PLY':'WRITING');
+}
+
+async function submitPro({video=null,images=[]}){
+  show('analyze');buildSteps();
+  status('PRO PREFLIGHT','Connecting to private GPU node',state.mode==='ultra'?'DA3-BASE → COLMAP seed → gsplat MCMC 30k':'DA3-BASE → COLMAP seed → gsplat MCMC 7k',3);
+  diag('No fake fallback: PRO requires the private GPU reconstruction node.');
+  try{
+    const cfg=await getProConfig(true);
+    if(!cfg.configured)throw new Error('PRO GPU is not connected. The browser and API contract are wired; deploy gpu-backend/ and set the two Vercel environment variables to activate it.');
+    if(!cfg.health?.ok)throw new Error(`GPU node health check failed: ${cfg.health?.error||cfg.health?.status||'offline'}`);
+    setStep('upload',8,'START');
+    const form=new FormData();form.append('mode',state.mode);form.append('process_res',state.mode==='ultra'?'1008':'756');
+    if(video)form.append('video',video,video.name||'scan.mp4');
+    for(let i=0;i<(images||[]).length;i++)form.append('images',images[i],images[i].name||`view-${i}.jpg`);
+    status('UPLOAD','Streaming capture directly to GPU','Large media bypasses Vercel Functions',8);
+    const r=await proFetch('/v1/jobs',{method:'POST',body:form});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.detail||j.error||`GPU upload HTTP ${r.status}`);
+    state.proJob=j.job_id;setStep('upload',100,`${j.frames} FRAMES`);
+    status('GPU QUEUE','Reconstruction job accepted',`${j.frames} views · ${state.mode.toUpperCase()}`,12);
+    await pollProJob(j.job_id);
+  }catch(err){
+    console.error(err);diag(err.stack||err.message);
+    modal('PRO pipeline stopped',`<p>${escapeHtml(err.message)}</p><p><b>INSTANT</b> remains available locally. The commercial pipeline is deliberately not simulated when the GPU node is absent.</p>`);
+    show('landing');refreshProStatus();
+  }
+}
+
+async function pollProJob(id){
+  let job;
+  for(let tries=0;tries<3600;tries++){
+    const r=await proFetch(`/v1/jobs/${encodeURIComponent(id)}`,{cache:'no-store'});
+    job=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(job.detail||job.error||`GPU job HTTP ${r.status}`);
+    mapProProgress(job);
+    status(job.status==='running'?'GPU RECONSTRUCTION':'GPU QUEUE',job.message||job.status,`${Math.round((job.progress||0)*100)}% · job ${id.slice(0,8)}`,12+Math.round((job.progress||0)*80));
+    diag(JSON.stringify({mode:job.mode,frames:job.frames,progress:job.progress,seed:job.seed||null,steps:job.steps||null},null,2));
+    if(job.status==='failed')throw new Error(job.message||'GPU reconstruction failed');
+    if(job.status==='completed')break;
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  if(!job||job.status!=='completed')throw new Error('GPU job did not complete within the polling window');
+  const path=job.artifacts?.splat;
+  if(!path)throw new Error('GPU job completed without a splat artifact');
+  setStep('export',100,'PLY');
+  status('DOWNLOAD','Streaming optimized Gaussian PLY','Opening directly in SuperSplat',94);
+  const ar=await proFetch(path,{cache:'no-store'});
+  if(!ar.ok)throw new Error(`Splat download HTTP ${ar.status}`);
+  const blob=await ar.blob();
+  state.plyBlob=blob;if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);state.plyUrl=URL.createObjectURL(blob);
+  setStep('viewer',20,'LOAD');
+  await openWorldBlob(state.plyUrl,state.mode==='ultra'?'ULTRA · GSPLAT 30K':'PRO · GSPLAT 7K');
+  setStep('viewer',100,'LIVE');status('DONE','Optimized reality compiled',`${(blob.size/1048576).toFixed(1)} MB Gaussian PLY`,100);
+}
+
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 // Explain advanced engines without pretending they run in-browser when they do not.
 addEventListener('keydown',(e)=>{
-  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX',`<p><b>LOCAL / ACTIVE:</b> DA3 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>DIRECT IMPORT:</b> PLY/SPLAT/SOG from LiDAR or dedicated capture apps.</p><p><b>OPTIONAL SEMANTICS:</b> Florence-2 WebGPU after reconstruction.</p><p><b>FREE SPLATTER:</b> excellent pose-free neural splat engine, but its current fast implementation is native CPU/Vulkan rather than browser WASM. V3 does not fake it.</p><p><b>TRELLIS.2:</b> ideal next stage for replacing selected objects with generated GLB assets; it requires a GPU Space/API quota, so it is kept out of the geometry critical path.</p>`);
+  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V4',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / WIRED:</b> DA3-BASE (Apache) → COLMAP seed → gsplat MCMC 7k on private NVIDIA GPU.</p><p><b>ULTRA / WIRED:</b> same commercial stack at 30k optimization steps.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
 });
 
