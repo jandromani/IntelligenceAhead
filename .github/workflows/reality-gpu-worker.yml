@@ -9,6 +9,10 @@ on:
       - "gpu-worker/**"
       - ".github/workflows/reality-gpu-worker.yml"
 
+concurrency:
+  group: reality-gpu-worker-preview
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
