@@ -12,9 +12,9 @@ function inflate(parts,out){
 inflate(['reality-v3-payload/html.b64'],'reality-compiler.html');
 let html=fs.readFileSync('reality-compiler.html','utf8');
 html=html
-  .replace('Reality Compiler V3 — Multiview Gaussian World Engine','Reality Compiler V4 — Instant + Pro Gaussian World Engine')
-  .replace('V3 · MULTIVIEW GAUSSIAN WORLD ENGINE','V4 · INSTANT + PRO GAUSSIAN PIPELINE')
-  .replace('Move slowly around a room. V3 picks four sharp, separated views, runs Depth Anything 3 multi-view ONNX locally, recovers camera poses and fuses the scene into a splat-ready 3D world.','Instant reconstructs four views locally. Pro and Ultra send a full slow scan to the private GPU pipeline for DA3-BASE camera recovery and iterative gsplat optimization.');
+  .replace('Reality Compiler V3 — Multiview Gaussian World Engine','Reality Compiler V5 — Room-Scale Gaussian Reconstruction')
+  .replace('V3 · MULTIVIEW GAUSSIAN WORLD ENGINE','V5 · ROOM-SCALE GAUSSIAN PIPELINE')
+  .replace('Move slowly around a room. V3 picks four sharp, separated views, runs Depth Anything 3 multi-view ONNX locally, recovers camera poses and fuses the scene into a splat-ready 3D world.','Instant is now a denser upright preview. Pro and Ultra send the full scan to a live DA3 GPU pipeline and load the returned 3D Gaussian world in SuperSplat.');
 fs.writeFileSync('reality-compiler.html',html);
 
 if(fs.existsSync('reality-v4-src/style.css')){
