@@ -85,7 +85,7 @@ export async function getJDownloader() {
   const sbx = await Sandbox.getOrCreate({
     name: NAME,
     ports: [PORT],
-    timeout: 60 * 60 * 1000,
+    timeout: 40 * 60 * 1000,
     onCreate: async (sandbox) => {
       await installDocker(sandbox);
       await ensureContainer(sandbox);
@@ -118,7 +118,7 @@ export async function stopJDownloaderContainer() {
   const sbx = await Sandbox.getOrCreate({
     name: NAME,
     ports: [PORT],
-    timeout: 60 * 60 * 1000,
+    timeout: 40 * 60 * 1000,
   });
   await ensureDocker(sbx);
   await sbx.runCommand({ cmd: 'bash', args: ['-lc', 'sudo docker stop jdownloader-2 >/dev/null 2>&1 || true'] });
