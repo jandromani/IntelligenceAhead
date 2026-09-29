@@ -14,10 +14,12 @@ let html=fs.readFileSync('reality-compiler.html','utf8');
 html=html
   .replace('Reality Compiler V3 — Multiview Gaussian World Engine','Reality Compiler V6 — Private GPU Splatfacto')
   .replace('V3 · MULTIVIEW GAUSSIAN WORLD ENGINE','V6 · PRIVATE GPU GSPLAT PIPELINE')
+  .replace('VIDEO → 4-VIEW GEOMETRY → GAUSSIAN WORLD','VIDEO → CAMERA SOLVE → 30K GSPLAT → GAUSSIAN WORLD')
   .replace(
     'Move slowly around a room. V3 picks four sharp, separated views, runs Depth Anything 3 multi-view ONNX locally, recovers camera poses and fuses the scene into a splat-ready 3D world.',
     'Instant is the local preview. PRO and ULTRA use the private GPU worker for camera solving and 30k iterative Gaussian optimization.'
-  );
+  )
+  .replace('Record 6–12 seconds while moving sideways or around the subject. Avoid fast turns and motion blur.','For rooms, record 20–40 seconds. Walk slowly with real translation, revisit corners and doorways, and avoid fast turns or motion blur.');
 fs.writeFileSync('reality-compiler.html',html);
 
 if(fs.existsSync('reality-v4-src/style.css')){
