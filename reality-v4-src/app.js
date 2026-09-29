@@ -106,7 +106,10 @@ async function refreshProStatus(){
   try{
     const r=await fetch('/api/reality-pro-status',{cache:'no-store'});
     const j=await r.json();
-    if(j.ok){
+    if(j.api_ok && j.anonymous_reconstruct===false){
+      chip.textContent='PRO LAB · QUOTA';chip.style.color='#d6bd69';
+      chip.title=j.blocker||'Public GPU reconstruction is quota-limited';
+    }else if(j.ok){
       chip.textContent='PRO HF · READY';chip.style.color='var(--lime)';
     }else{
       chip.textContent='PRO HF · DOWN';chip.style.color='var(--red)';
@@ -597,7 +600,11 @@ async function submitPro({video=null,images=[]}){
     status('DONE','Full-scan Gaussian world compiled',`${(blob.size/1048576).toFixed(1)} MB · DA3 GPU 3DGS`,100);
   }catch(err){
     console.error(err);diag(err.stack||err.message);
-    modal('PRO reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p>The local <b>INSTANT</b> path is still available. PRO is now wired to a real public DA3 Gaussian GPU Space, so queue/sleep limits on that external Space can temporarily stop a job.</p>`);
+    const msg=String(err.message||err);
+    const durationBlocked=/requested GPU duration|maximum allowed|900s|Hugging Face PRO/i.test(msg);
+    modal('PRO reconstruction stopped',durationBlocked
+      ? `<p><b>Upload succeeded, but the public GPU fork refused reconstruction.</b></p><p>${escapeHtml(msg)}</p><p>This is a ZeroGPU duration/tier pre-check, not a DA3 geometry failure. Production needs our own GPU worker (commercial model + gsplat) instead of this public laboratory Space.</p>`
+      : `<p>${escapeHtml(msg)}</p><p>The local <b>INSTANT</b> path is still available. This public Space is a lab dependency, not the production GPU backend.</p>`);
     show('landing');refreshProStatus();
   }
 }
