@@ -2,7 +2,6 @@ import './style.css';
 import * as ort from 'onnxruntime-web/webgpu';
 import { createViewer } from '@playcanvas/supersplat-viewer/viewer';
 import { defaultSettings } from '@playcanvas/supersplat-viewer/settings';
-import { Client, handle_file } from '@gradio/client';
 import '@playcanvas/supersplat-viewer/viewer.css';
 import {
   Florence2ForConditionalGeneration,
@@ -17,7 +16,6 @@ const SIZE = 504;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 const C0 = 0.28209479177387814;
-const DA3_SPACE = 'https://justinmeans-da3-gaussiansplat.hf.space';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['landing','capture','analyze','world'];
@@ -91,9 +89,9 @@ function setMode(mode){
     copy.textContent=mode==='instant'
       ? 'Fast local preview. Four overlapping views are reconstructed in your browser.'
       : mode==='pro'
-      ? 'Full-room path. The entire slow scan is sent to a live DA3 GPU Space, which recovers all views and exports a real Gaussian Splat.'
+      ? 'Full-room GPU path. Video is solved with SfM, then Splatfacto/gsplat optimizes the room for 30,000 iterations and exports a real Gaussian PLY.'
       : mode==='ultra'
-      ? 'Highest live quality path: more capture views + DA3 high-res processing + 3D Gaussian export. Slower, but designed for rooms rather than objects.'
+      ? 'Highest-quality GPU path. More source frames + Splatfacto Big + 30,000 iterative optimization steps. This is intentionally slower and denser.'
       : 'Metric path. Import an RGB-D / LiDAR splat now; automatic SplaTAM ingestion is the next wired backend.';
   }
   const engine=$('engineChip');
@@ -104,18 +102,24 @@ function setMode(mode){
 async function refreshProStatus(){
   const chip=$('proChip'); if(!chip)return;
   try{
-    const r=await fetch('/api/reality-pro-status',{cache:'no-store'});
+    const r=await fetch('/api/reality-pro-config',{cache:'no-store'});
     const j=await r.json();
-    if(j.api_ok && j.anonymous_reconstruct===false){
-      chip.textContent='PRO LAB · QUOTA';chip.style.color='#d6bd69';
-      chip.title=j.blocker||'Public GPU reconstruction is quota-limited';
-    }else if(j.ok){
-      chip.textContent='PRO HF · READY';chip.style.color='var(--lime)';
+    state.proConfig=j; state.proConfigAt=Date.now();
+    if(j.configured && j.health?.ok && j.health?.gpu){
+      chip.textContent='PRO GPU · READY';chip.style.color='var(--lime)';
+      chip.title=j.health.gpu_name||j.backend;
+    }else if(j.configured && j.health?.ok){
+      chip.textContent='PRO GPU · NO CUDA';chip.style.color='var(--red)';
+      chip.title='Worker reachable but no CUDA GPU detected';
+    }else if(j.configured){
+      chip.textContent='PRO GPU · OFFLINE';chip.style.color='var(--red)';
+      chip.title=j.health?.error||'Worker health check failed';
     }else{
-      chip.textContent='PRO HF · DOWN';chip.style.color='var(--red)';
+      chip.textContent='PRO GPU · UNWIRED';chip.style.color='#d6bd69';
+      chip.title='Commercial worker is built but REALITY_PRO_BACKEND_URL is not configured';
     }
   }catch{
-    chip.textContent='PRO HF · UNKNOWN';chip.style.color='#d6bd69';
+    chip.textContent='PRO GPU · UNKNOWN';chip.style.color='#d6bd69';
   }
 }
 
@@ -129,7 +133,7 @@ function setStep(name, pct, note=''){
 function buildSteps(){
   const remote=state.mode==='pro'||state.mode==='ultra';
   const items=remote
-    ? [['upload','GPU UPLOAD'],['infer','DA3 ALL-VIEW'],['fusion','CAMERA SOLVE'],['gauss',state.mode==='ultra'?'3DGS HIGH-RES':'3DGS PRO'],['export','PLY EXPORT'],['viewer','SPLAT VIEWER']]
+    ? [['upload','GPU UPLOAD'],['infer','FRAME PREP'],['fusion','CAMERA SOLVE'],['gauss',state.mode==='ultra'?'GSPLAT BIG · 30K':'GSPLAT · 30K'],['export','PLY EXPORT'],['viewer','SPLAT VIEWER']]
     : [['keyframes','KEYFRAMES'],['weights','DA3 WEIGHTS'],['infer','MULTIVIEW INFERENCE'],['fusion','POSE FUSION'],['gauss','GAUSSIAN PACK'],['viewer','SPLAT VIEWER']];
   $('steps').innerHTML=items.map(([id,label])=>`<div class="step" data-step="${id}"><div><span>${label}</span><b>WAIT</b></div><i><u></u></i></div>`).join('');
 }
@@ -472,139 +476,96 @@ function metricNotYet(){
   modal('METRIC PIPELINE',`<p><b>Direct LiDAR/splat import is live now.</b></p><p>Use <b>OPEN PLY / SPLAT / SOG</b> with a Scaniverse, Polycam, SplaTAM or other RGB-D export. Automatic SplaTAM capture ingestion is scaffolded for the private GPU node but is not yet exposed as a browser capture protocol.</p>`);
 }
 
-async function getProClient(){
-  if(state.proClient)return state.proClient;
-  $('proChip').textContent='PRO HF · WAKING';
-  state.proClient=await Client.connect(DA3_SPACE,{
-    status_callback:(x)=>{
-      if(!$('proChip'))return;
-      const running=x?.status==='running'||x?.detail==='RUNNING';
-      $('proChip').textContent=running?'PRO HF · READY':`PRO HF · ${String(x?.status||'CONNECTING').toUpperCase()}`;
-      $('proChip').style.color=running?'var(--lime)':'#d6bd69';
-    }
-  });
-  $('proChip').textContent='PRO HF · READY';$('proChip').style.color='var(--lime)';
-  return state.proClient;
+async function getProConfig(force=false){
+  if(!force && state.proConfig && Date.now()-state.proConfigAt<45000)return state.proConfig;
+  const r=await fetch('/api/reality-pro-config',{cache:'no-store'});
+  if(!r.ok)throw new Error(`GPU config HTTP ${r.status}`);
+  const j=await r.json();state.proConfig=j;state.proConfigAt=Date.now();return j;
 }
 
-function resolveGradioFileUrl(file){
-  if(!file)return null;
-  if(typeof file==='string')return file;
-  return file.url||file.path||file.video?.url||file.video?.path||null;
+function workerStep(stage,progress){
+  const p=Math.max(0,Math.min(100,Number(progress)||0));
+  if(stage==='queued'){setStep('upload',10,'QUEUED');}
+  if(stage==='preflight'){setStep('upload',100,'DONE');setStep('infer',Math.min(100,p*4),'CHECK');}
+  if(stage==='camera_solve'){setStep('upload',100,'DONE');setStep('infer',100,'FRAMES');setStep('fusion',Math.max(5,Math.min(100,(p-5)*5)),'SOLVING');}
+  if(stage==='gaussian_optimization'){setStep('fusion',100,'DONE');setStep('gauss',Math.max(1,Math.min(100,(p-25)/63*100)),`${Math.round(Math.max(0,(p-25)/63*30000))}/30K`);}
+  if(stage==='export'||stage==='evaluation'||stage==='finalize'){setStep('gauss',100,'30K DONE');setStep('export',Math.max(10,Math.min(100,(p-88)/11*100)),'EXPORT');}
 }
 
-async function videoDuration(file){
-  if(!file)return 0;
-  const url=URL.createObjectURL(file);
-  try{
-    const v=document.createElement('video');v.preload='metadata';v.src=url;
-    await new Promise((resolve,reject)=>{v.onloadedmetadata=resolve;v.onerror=()=>reject(new Error('Could not read video metadata'));});
-    return Number.isFinite(v.duration)?v.duration:0;
-  }finally{URL.revokeObjectURL(url);}
-}
-async function chooseRemoteSampling(video,ultra){
-  if(!video)return {fps:null,duration:0,target:ultra?24:48};
-  const duration=await videoDuration(video);
-  const target=ultra?24:48;
-  // DA3's slider is true sampling FPS. Aim for tens of useful views, not hundreds.
-  const fps=Math.max(.5,Math.min(3,target/Math.max(1,duration)));
-  return {fps:Number(fps.toFixed(2)),duration,target};
-}
-function spreadFiles(files,max){
-  if(!Array.isArray(files)||files.length<=max)return files||[];
-  const out=[];for(let i=0;i<max;i++)out.push(files[Math.round(i*(files.length-1)/(max-1))]);
-  return out;
+async function pollWorkerJob(cfg,job){
+  while(true){
+    await new Promise(r=>setTimeout(r,1800));
+    const r=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}?access_token=${encodeURIComponent(job.access_token)}`,{cache:'no-store'});
+    if(!r.ok)throw new Error(`GPU job status HTTP ${r.status}`);
+    const j=await r.json();
+    state.proJob=j;
+    workerStep(j.stage,j.progress);
+    const tail=(j.log_tail||[]).slice(-8).join('\n');
+    diag(JSON.stringify({job:j.job_id,status:j.status,stage:j.stage,progress:j.progress,splats:j.splats||null,video:j.video||null},null,2)+(tail?'\n\n'+tail:''));
+    status(
+      j.stage==='gaussian_optimization'?'GSPLAT OPTIMIZATION':'GPU RECONSTRUCTION',
+      j.stage==='gaussian_optimization'?'Densifying and optimizing the room':'Building the commercial room reconstruction',
+      `${Math.round(j.progress||0)}% · ${j.status}`,
+      j.progress||0
+    );
+    if(j.status==='error')throw new Error(j.error||'GPU worker failed');
+    if(j.status==='done')return j;
+  }
 }
 
 async function submitPro({video=null,images=[]}){
   show('analyze');buildSteps();
   const ultra=state.mode==='ultra';
-  status('GPU PREFLIGHT','Connecting to live DA3 + 3DGS Space',ultra?'HIGH_RES · ALL VIEWS · 3DGS':'FULL SCAN · ALL VIEWS · 3DGS',3);
-  diag('PRO now uses a real Hugging Face GPU Space. It no longer simulates a private gsplat node.');
+  status('GPU PREFLIGHT','Checking commercial reconstruction worker',ultra?'SPLATFACTO BIG · 30K':'SPLATFACTO · 30K',2);
   try{
-    const client=await getProClient();
-    setStep('upload',8,'START');
-    status('UPLOAD','Sending the room scan to DA3',video?'Adaptive sampling · tens of views, not hundreds':`${Math.min(images.length,ultra?24:48)} selected views`,8);
+    const cfg=await getProConfig(true);
+    if(!cfg.configured){
+      throw new Error('Commercial GPU worker is built but not deployed/configured yet (REALITY_PRO_BACKEND_URL missing).');
+    }
+    if(!cfg.health?.ok)throw new Error(`GPU worker is unreachable: ${cfg.health?.error||cfg.health?.status||'health check failed'}`);
+    if(cfg.health.gpu===false)throw new Error('GPU worker is reachable but CUDA is not available.');
 
-    const sampling=await chooseRemoteSampling(video,ultra);
-    const selectedImages=spreadFiles(images,ultra?24:48);
-    const videoPayload=video ? {video:handle_file(video),subtitles:null} : null;
-    diag(JSON.stringify({
-      transport:'gradio',
-      input:video?'VideoData':'FileData[]',
-      duration_s:sampling.duration||null,
-      sampling_fps:sampling.fps,
-      target_views:sampling.target,
-      uploaded_images:selectedImages.length,
-      process_res:ultra?'high_res':'low_res',
-      infer_gs:true
-    },null,2));
-    const upload=await client.predict('/handle_uploads',{
-      input_video: videoPayload,
-      input_images: selectedImages.length ? selectedImages.map(f=>handle_file(f)) : null,
-      s_time_interval: sampling.fps ?? 1
+    const form=new FormData();
+    form.append('mode',ultra?'ultra':'pro');
+    form.append('frames_target',ultra?'240':'140');
+    if(video){
+      form.append('file',video,video.name||'capture.mp4');
+    }else{
+      const selected=spreadFiles(images,ultra?240:140);
+      selected.forEach((f,i)=>form.append('files',f,f.name||`view-${String(i).padStart(4,'0')}.jpg`));
+    }
+
+    setStep('upload',12,'UPLOAD');
+    status('GPU UPLOAD','Uploading capture to the private worker',video?(video.name||'video'):`${images.length} images`,7);
+    const create=await fetch(`${cfg.backend}/jobs`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${cfg.token}`},
+      body:form
     });
-    const u=upload?.data||[];
-    const targetDir=u[1];
-    const gallery=u[2]||[];
-    if(!targetDir)throw new Error('DA3 accepted the upload but did not return a target directory.');
-    const frameCount=Array.isArray(gallery)?gallery.length:(images?.length||0);
-    setStep('upload',100,frameCount?`${frameCount} FRAMES`:'DONE');
-    setStep('infer',12,'QUEUED');
-    status('DA3 GPU','Recovering cameras, depth and visual space',`${frameCount||'many'} views · ${ultra?'high-res':'room-res'}`,24);
+    if(!create.ok)throw new Error(`GPU job creation HTTP ${create.status}: ${await create.text()}`);
+    const job=await create.json();
+    state.proJob=job;
+    setStep('upload',100,'DONE');
+    diag(JSON.stringify({backend:cfg.backend,job_id:job.job_id,mode:job.mode,frames_target:job.frames_target},null,2));
 
-    let fakeProgress=24;
-    const ticker=setInterval(()=>{
-      fakeProgress=Math.min(88,fakeProgress+(ultra ? .7 : 1.15));
-      const q=Math.max(0,(fakeProgress-24)/64);
-      setStep('infer',Math.min(100,q*125),q>.8?'DONE':'RUNNING');
-      if(q>.35)setStep('fusion',Math.min(100,(q-.35)*155),q>.95?'DONE':'SOLVING');
-      if(q>.52)setStep('gauss',Math.min(96,(q-.52)*205),'DENSIFY');
-      status('3D GAUSSIAN RECONSTRUCTION','The GPU is building the room',`${Math.round(fakeProgress)}% · this is intentionally slower than Instant`,fakeProgress);
-    },1000);
+    const done=await pollWorkerJob(cfg,job);
+    setStep('export',100,done.splats?`${Number(done.splats).toLocaleString()} GS`:'DONE');
+    status('DOWNLOAD','Streaming optimized Gaussian PLY','Loading trained splats into SuperSplat',98);
+    const rr=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}/result?access_token=${encodeURIComponent(job.access_token)}`);
+    if(!rr.ok)throw new Error(`GPU result HTTP ${rr.status}: ${await rr.text()}`);
+    const blob=await rr.blob();
+    if(blob.size<1024)throw new Error('GPU worker returned an unexpectedly small PLY.');
 
-    let result;
-    try{
-      result=await client.predict('/gradio_demo',{
-        target_dir: targetDir,
-        show_cam: false,
-        filter_black_bg: false,
-        filter_white_bg: false,
-        process_res_method: ultra ? 'high_res' : 'low_res',
-        save_percentage: ultra ? 5 : 10,
-        num_max_points: ultra ? 2000 : 1000,
-        infer_gs: true,
-        gs_trj_mode: 'smooth',
-        gs_video_quality: ultra ? 'high' : 'medium'
-      });
-    }finally{clearInterval(ticker);}
-
-    setStep('infer',100,'DONE');setStep('fusion',100,'DONE');setStep('gauss',100,'3DGS');
-    const data=result?.data||[];
-    const plyRef=data[10];
-    const plyUrl=resolveGradioFileUrl(plyRef);
-    if(!plyUrl)throw new Error('DA3 completed but no Gaussian PLY was returned by the Space.');
-    setStep('export',25,'FETCH');
-    status('DOWNLOAD','Streaming the real Gaussian PLY','Loading the GPU result into SuperSplat',94);
-    const pr=await fetch(plyUrl);
-    if(!pr.ok)throw new Error(`Gaussian PLY HTTP ${pr.status}`);
-    const blob=await pr.blob();
-    if(blob.size<1024)throw new Error('The Gaussian PLY returned by the Space is unexpectedly small.');
     state.plyBlob=blob;
     if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);
     state.plyUrl=URL.createObjectURL(blob);
-    setStep('export',100,`${(blob.size/1048576).toFixed(1)} MB`);
     setStep('viewer',25,'LOAD');
-    await openWorldBlob(state.plyUrl,ultra?'ULTRA · DA3 HIGH-RES 3DGS':'PRO · DA3 3DGS');
+    await openWorldBlob(state.plyUrl,ultra?'ULTRA · SPLATFACTO BIG 30K':'PRO · SPLATFACTO 30K');
     setStep('viewer',100,'LIVE');
-    status('DONE','Full-scan Gaussian world compiled',`${(blob.size/1048576).toFixed(1)} MB · DA3 GPU 3DGS`,100);
+    status('DONE','Optimized room-scale Gaussian world',`${(blob.size/1048576).toFixed(1)} MB · ${done.splats?Number(done.splats).toLocaleString()+' splats · ':''}30K training`,100);
   }catch(err){
     console.error(err);diag(err.stack||err.message);
-    const msg=String(err.message||err);
-    const durationBlocked=/requested GPU duration|maximum allowed|900s|Hugging Face PRO/i.test(msg);
-    modal('PRO reconstruction stopped',durationBlocked
-      ? `<p><b>Upload succeeded, but the public GPU fork refused reconstruction.</b></p><p>${escapeHtml(msg)}</p><p>This is a ZeroGPU duration/tier pre-check, not a DA3 geometry failure. Production needs our own GPU worker (commercial model + gsplat) instead of this public laboratory Space.</p>`
-      : `<p>${escapeHtml(msg)}</p><p>The local <b>INSTANT</b> path is still available. This public Space is a lab dependency, not the production GPU backend.</p>`);
+    modal('PRO reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p><b>INSTANT</b> remains local. PRO/ULTRA now intentionally require our own private CUDA worker; the public Hugging Face Space is no longer presented as production infrastructure.</p>`);
     show('landing');refreshProStatus();
   }
 }
@@ -613,6 +574,6 @@ function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 
 // Explain advanced engines without pretending they run in-browser when they do not.
 addEventListener('keydown',(e)=>{
-  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / LIVE:</b> video/images → adaptive keyframe sampling → Hugging Face DA3 GPU → camera/depth recovery → native 3DGS head → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / LIVE:</b> same path with high-res DA3 processing and more capture views.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
+  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / PRIVATE GPU:</b> video/images → COLMAP camera solve → Nerfstudio Splatfacto/gsplat → 30,000 iterative steps → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / PRIVATE GPU:</b> Splatfacto Big, more source views and denser Gaussian optimization.</p><p><b>LAB:</b> public DA3 Spaces remain audit/reference only; they are not the commercial backend.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
 });
 
