@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const raw = Array.isArray(body?.uris) ? body.uris : [];
     const uris = raw.map((x: unknown) => String(x).trim()).filter(Boolean);
     if (!uris.length) return NextResponse.json({ error: 'No URLs supplied' }, { status: 400 });
-    if (uris.length > 50) return NextResponse.json({ error: 'Maximum 50 URLs per batch' }, { status: 400 });
+    if (uris.length > 200) return NextResponse.json({ error: 'Maximum 200 URLs per batch' }, { status: 400 });
     const invalid = uris.filter((u: string) => !validUri(u));
     if (invalid.length) return NextResponse.json({ error: 'Only http(s) and magnet URIs are accepted', invalid }, { status: 400 });
     const gids = await addUris(uris, Boolean(body?.metadataOnly));
