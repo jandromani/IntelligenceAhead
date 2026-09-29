@@ -23,6 +23,8 @@ RUN python -m py_compile /app/main.py /app/pipeline.py /app/keyframes.py \
 ENV REALITY_WORKER_ROOT=/data/reality-jobs \
     REALITY_GPU_CONCURRENCY=1 \
     REALITY_MAX_UPLOAD_GB=4 \
+    REALITY_JOB_TTL_HOURS=24 \
+    REALITY_KEEP_INTERMEDIATES=0 \
     PYTHONUNBUFFERED=1
 
 VOLUME ["/data", "/root/.cache"]
