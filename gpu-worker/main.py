@@ -21,6 +21,7 @@ ROOT.mkdir(parents=True, exist_ok=True)
 SHARED_SECRET = os.environ.get("REALITY_PRO_SHARED_SECRET", "")
 MAX_UPLOAD_GB = float(os.environ.get("REALITY_MAX_UPLOAD_GB", "4"))
 TOKEN_TTL = int(os.environ.get("REALITY_BOOTSTRAP_TTL", "600"))
+JOB_TTL_HOURS = float(os.environ.get("REALITY_JOB_TTL_HOURS", "24"))
 ALLOWED_ORIGINS = [x.strip() for x in os.environ.get("REALITY_ALLOWED_ORIGINS", "*").split(",") if x.strip()]
 
 app = FastAPI(title="Reality Compiler GPU Worker", version="1.0.0")
@@ -70,7 +71,7 @@ def update_job(job_id: str, **changes):
 
 def verify_bootstrap(authorization: str | None):
     if not SHARED_SECRET:
-        return
+        raise HTTPException(503, "Worker shared secret is not configured")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Missing worker bootstrap token")
     token = authorization.split(" ", 1)[1].strip()
@@ -105,6 +106,27 @@ def assert_job_access(job_id: str, access_token: str):
         raise HTTPException(403, "Invalid job access token")
     return job
 
+
+
+def cleanup_expired_jobs():
+    cutoff = now() - JOB_TTL_HOURS * 3600
+    for d in ROOT.iterdir():
+        if not d.is_dir():
+            continue
+        p = d / "state.json"
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text())
+            if data.get("status") in {"queued", "running"}:
+                continue
+            stamp = float(data.get("finished_at") or data.get("updated_at") or data.get("created_at") or 0)
+            if stamp and stamp < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                with jobs_lock:
+                    jobs.pop(data.get("job_id") or d.name, None)
+        except Exception:
+            continue
 
 def worker_entry(job_id: str, input_path: str, input_kind: str, mode: str, frames_target: int):
     try:
@@ -174,6 +196,8 @@ def health():
         "gpu_name": gpu_name,
         "pipeline": "nerfstudio-splatfacto-gsplat",
         "commercial_path": True,
+        "auth_configured": bool(SHARED_SECRET),
+        "job_ttl_hours": JOB_TTL_HOURS,
         "root": str(ROOT),
     }
 
@@ -187,6 +211,7 @@ async def create_job(
     authorization: str | None = Header(default=None),
 ):
     verify_bootstrap(authorization)
+    cleanup_expired_jobs()
     mode = mode.lower().strip()
     if mode not in {"pro", "ultra"}:
         raise HTTPException(400, "mode must be pro or ultra")
