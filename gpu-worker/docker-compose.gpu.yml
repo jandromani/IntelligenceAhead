@@ -1,0 +1,26 @@
+services:
+  reality-gpu:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    shm_size: "12gb"
+    environment:
+      REALITY_PRO_SHARED_SECRET: "${REALITY_PRO_SHARED_SECRET}"
+      REALITY_ALLOWED_ORIGINS: "${REALITY_ALLOWED_ORIGINS:-*}"
+      REALITY_GPU_CONCURRENCY: "1"
+      REALITY_MAX_UPLOAD_GB: "4"
+    volumes:
+      - reality-jobs:/data
+      - model-cache:/root/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  reality-jobs:
+  model-cache:
