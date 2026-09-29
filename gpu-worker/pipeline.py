@@ -76,7 +76,7 @@ def ply_vertex_count(path: Path):
     return None
 
 
-def run_reconstruction(job_id: str, input_path: Path, workdir: Path, mode: str, frames_target: int, update):
+def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind: str, mode: str, frames_target: int, update):
     _tail_push.lines = []
     logs = workdir / "logs"
     dataset = workdir / "dataset"
@@ -86,29 +86,40 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, mode: str, 
         p.mkdir(parents=True, exist_ok=True)
 
     update(stage="preflight", progress=3)
-    meta = ffprobe(input_path)
-    duration = float(meta.get("format", {}).get("duration") or 0)
-    stream = (meta.get("streams") or [{}])[0]
-    update(
-        stage="preflight",
-        progress=5,
-        video={
-            "duration_s": duration,
-            "width": stream.get("width"),
-            "height": stream.get("height"),
-            "frames_target": frames_target,
-        },
-    )
-
-    # Mature room-scale pose bootstrap: video -> frames -> COLMAP sequential SfM.
-    run(
-        [
+    if input_kind == "video":
+        meta = ffprobe(input_path)
+        duration = float(meta.get("format", {}).get("duration") or 0)
+        stream = (meta.get("streams") or [{}])[0]
+        update(
+            stage="preflight",
+            progress=5,
+            video={
+                "duration_s": duration,
+                "width": stream.get("width"),
+                "height": stream.get("height"),
+                "frames_target": frames_target,
+            },
+        )
+        process_cmd = [
             "ns-process-data", "video",
             "--data", str(input_path),
             "--output-dir", str(dataset),
             "--num-frames-target", str(frames_target),
             "--matching-method", "sequential",
-        ],
+        ]
+    else:
+        count = len([p for p in input_path.iterdir() if p.is_file()])
+        update(stage="preflight", progress=5, images={"count": count})
+        process_cmd = [
+            "ns-process-data", "images",
+            "--data", str(input_path),
+            "--output-dir", str(dataset),
+            "--matching-method", "exhaustive" if count <= 80 else "vocab_tree",
+        ]
+
+    # Mature room-scale pose bootstrap: frames/images -> COLMAP SfM.
+    run(
+        process_cmd,
         cwd=workdir,
         log_path=logs / "01_process_data.log",
         update=update,
