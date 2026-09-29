@@ -139,6 +139,24 @@ def worker_entry(job_id: str, input_path: str, input_kind: str, mode: str, frame
         )
 
 
+
+@app.on_event("startup")
+def recover_job_index():
+    for p in ROOT.glob("*/state.json"):
+        try:
+            data = json.loads(p.read_text())
+            jid = data.get("job_id") or p.parent.name
+            if data.get("status") in {"queued", "running"}:
+                data["status"] = "error"
+                data["stage"] = "interrupted"
+                data["error"] = "Worker restarted while this job was active; resubmit the capture."
+                data["updated_at"] = now()
+                p.write_text(json.dumps(data, indent=2, default=str))
+            with jobs_lock:
+                jobs[jid] = data
+        except Exception:
+            continue
+
 @app.get("/health")
 def health():
     gpu = False
@@ -163,7 +181,7 @@ def health():
 @app.post("/jobs")
 async def create_job(
     file: UploadFile | None = File(default=None),
-    files: list[UploadFile] = File(default=[]),
+    files: list[UploadFile] | None = File(default=None),
     mode: str = Form("pro"),
     frames_target: int = Form(0),
     authorization: str | None = Header(default=None),
@@ -181,6 +199,7 @@ async def create_job(
     access_token = secrets.token_urlsafe(32)
     d = job_dir(job_id)
     d.mkdir(parents=True, exist_ok=False)
+    files = files or []
     if file is None and not files:
         shutil.rmtree(d, ignore_errors=True)
         raise HTTPException(400, "Upload one video or one/more images")
@@ -249,16 +268,16 @@ async def create_job(
 
 
 @app.get("/jobs/{job_id}")
-def get_job(job_id: str, access_token: str):
-    job = assert_job_access(job_id, access_token)
+def get_job(job_id: str, x_reality_job_token: str | None = Header(default=None)):
+    job = assert_job_access(job_id, x_reality_job_token or "")
     safe = {k: v for k, v in job.items() if k not in {"access_token", "result_path"}}
     safe["result_ready"] = bool(job.get("result_path") and Path(job["result_path"]).exists())
     return safe
 
 
 @app.get("/jobs/{job_id}/result")
-def get_result(job_id: str, access_token: str):
-    job = assert_job_access(job_id, access_token)
+def get_result(job_id: str, x_reality_job_token: str | None = Header(default=None)):
+    job = assert_job_access(job_id, x_reality_job_token or "")
     if job.get("status") != "done":
         raise HTTPException(409, f"Job is {job.get('status')}")
     p = Path(job.get("result_path") or "")
