@@ -62,7 +62,7 @@ function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metri
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
-  if(brandSmall) brandSmall.textContent='V6 · PRIVATE GPU GSPLAT PIPELINE';
+  if(brandSmall) brandSmall.textContent='V6.1 · PRIVATE GPU GSPLAT PIPELINE';
   const health=document.querySelector('.health');
   if(health && !$('proChip')){
     const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
