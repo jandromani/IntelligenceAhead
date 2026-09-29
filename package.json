@@ -10,8 +10,7 @@
     "@huggingface/transformers": "4.3.0",
     "@playcanvas/supersplat-viewer": "1.35.2",
     "onnxruntime-web": "1.23.2",
-    "playcanvas": "2.22.4",
-    "@gradio/client": "2.7.0"
+    "playcanvas": "2.22.4"
   },
   "devDependencies": {
     "vite": "6.4.3"
