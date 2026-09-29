@@ -31,7 +31,10 @@ async function ensureDaemon(sbx: Sandbox) {
   const cmd = await sbx.runCommand({
     cmd: 'bash',
     args: ['-lc', `
-      if ! pgrep -f "aria2c.*--enable-rpc=true" >/dev/null 2>&1; then
+      set -e
+      mkdir -p /vercel/sandbox/downloads /vercel/sandbox/aria2-session
+      touch /vercel/sandbox/aria2-session/session.txt
+      if ! pgrep -x aria2c >/dev/null 2>&1; then
         nohup aria2c \\
           --enable-rpc=true \\
           --rpc-listen-all=false \\
@@ -53,9 +56,18 @@ async function ensureDaemon(sbx: Sandbox) {
           --summary-interval=0 \\
           --console-log-level=warn \\
           >/vercel/sandbox/aria2.log 2>&1 &
-        sleep 1
       fi
-      pgrep -af aria2c || true
+      for i in $(seq 1 20); do
+        if curl -fsS -H 'Content-Type: application/json' \
+          -d '{"jsonrpc":"2.0","id":"health","method":"aria2.getVersion","params":[]}' \
+          http://127.0.0.1:6800/jsonrpc >/dev/null 2>&1; then
+          exit 0
+        fi
+        sleep 0.25
+      done
+      echo "aria2 RPC did not start" >&2
+      cat /vercel/sandbox/aria2.log >&2 || true
+      exit 1
     `],
   });
   if (cmd.exitCode !== 0) throw new Error(await cmd.stderr());
