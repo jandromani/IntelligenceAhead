@@ -1,0 +1,31 @@
+name: Reality Compiler CI
+on:
+  push:
+    branches: [reality-compiler-preview]
+    paths:
+      - 'gpu-backend/**'
+      - 'reality-v4-src/**'
+      - 'build.mjs'
+      - 'package.json'
+      - '.github/workflows/reality-compiler-ci.yml'
+  workflow_dispatch:
+jobs:
+  backend-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install "numpy<2" pillow
+      - run: python -m py_compile gpu-backend/server.py gpu-backend/commercial_pipeline.py
+      - run: python gpu-backend/test_contract.py
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
