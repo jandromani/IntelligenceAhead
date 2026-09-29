@@ -1,41 +1,67 @@
 # Reality Compiler GPU node
 
-Commercial-quality reconstruction node for Reality Compiler.
+Private NVIDIA-GPU reconstruction service for the commercial Reality Compiler pipeline.
 
-## What is actually wired
+## Commercial pipeline
 
-- Upload **video or multi-view photos** over multipart HTTP.
-- Video frame extraction with ffmpeg.
-- Persistent **Depth Anything 3** model on CUDA.
-- Direct DA3 Python call with `infer_gs=True`.
-- Exports `mini_npz + GLB + depth visualizations + Gaussian PLY`.
-- Single-GPU queue.
-- Job status API and artifact downloads.
-- Five-minute HMAC browser tokens; the long-lived shared secret never needs to be exposed to the browser.
-- DA3 pinned to a known commit for reproducibility.
+```
+video / multi-view photos
+        ↓
+ffmpeg frame extraction
+        ↓
+Depth Anything 3 BASE (Apache-2.0 weights)
+depth + confidence + camera intrinsics/extrinsics
+        ↓
+COLMAP-compatible camera + seed point dataset
+        ↓
+gsplat MCMC (Apache-2.0)
+        ↓
+PRO:   7,000 optimization steps
+ULTRA: 30,000 optimization steps
+        ↓
+Gaussian PLY
+        ↓
+SuperSplat in the browser
+```
 
-## GPU
+The commercial node **does not use DA3 GIANT, LARGE or NESTED-GIANT-LARGE weights**. Those model weights are not part of this product path.
 
-Start with a 24 GB NVIDIA GPU for experiments. The nested Giant/Large model and Gaussian branch are intentionally the quality path; lower-memory cards may require a smaller DA3 checkpoint or lower `process_res`.
+## API
+
+- `GET /health`
+- `POST /v1/jobs` — multipart video or 4+ images
+- `GET /v1/jobs/{job_id}`
+- `GET /v1/jobs/{job_id}/artifacts/splat`
+- `GET /v1/jobs/{job_id}/artifacts/log`
+
+`POST /v1/jobs` accepts:
+- `video`: one video, or
+- `images`: 4–72 overlapping images
+- `mode=pro|ultra`
+- `process_res=504..1008`
+
+The browser receives a five-minute HMAC token from the Vercel control plane and uploads media **directly** to this node, so large scans do not cross a Vercel Function.
+
+## Run
+
+A 24 GB NVIDIA GPU is a sensible starting point while the memory envelope is measured.
 
 ```bash
 cp .env.example .env
-# generate a secret, use the SAME value on Vercel
 openssl rand -hex 32
+# put that value in REALITY_PRO_SHARED_SECRET both here and in Vercel
 docker compose up --build
 curl http://localhost:8008/health
 ```
 
-For RunPod/Lambda/another GPU VM, build this image, expose port 8008 behind HTTPS, persist `/root/.cache/huggingface` and `/workspace`, and set `REALITY_PRO_SHARED_SECRET`.
+Then set on Vercel:
+- `REALITY_PRO_BACKEND_URL=https://gpu.example.com`
+- `REALITY_PRO_SHARED_SECRET=<same secret>`
 
-## Contract
+Persist:
+- `/root/.cache/huggingface`
+- `/workspace`
 
-`POST /v1/jobs` multipart:
-- `video`: one video, OR
-- `images`: 2..72 images
-- `mode=pro`
-- `process_res=1008`
+## Current verification boundary
 
-Poll `GET /v1/jobs/{id}`, then download `artifacts.splat`.
-
-This gateway exists because the stock DA3 backend accepts server-side `image_paths` and its current REST request model does not expose the `infer_gs` switch required for `gs_ply`. Reality Compiler calls the official Python API directly instead.
+The web/Vercel control plane and public-Hugging-Face API path have been exercised. The CUDA image and 7k/30k optimization stages still require an actual NVIDIA node for an end-to-end execution. The server deliberately keeps the gsplat log as an artifact so GPU failures can be diagnosed instead of becoming opaque client errors.
