@@ -6,6 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from keyframes import select_video_keyframes
+
 
 def _tail_push(update, line, limit=24):
     _tail_push.lines.append(line[-800:])
@@ -100,12 +102,30 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind:
                 "frames_target": frames_target,
             },
         )
+        selected_dir = workdir / "selected_frames"
+        report = select_video_keyframes(
+            input_path,
+            selected_dir,
+            target=frames_target,
+            duration=duration,
+        )
+        update(
+            stage="preflight",
+            progress=9,
+            keyframes={
+                "selected": report["selected_count"],
+                "candidates": report["candidate_count"],
+                "sharpness_median": report["sharpness_median"],
+                "clipped_mean": report["clipped_mean"],
+                "brightness_median": report["brightness_median"],
+            },
+        )
         process_cmd = [
-            "ns-process-data", "video",
-            "--data", str(input_path),
+            "ns-process-data", "images",
+            "--data", str(selected_dir),
             "--output-dir", str(dataset),
-            "--num-frames-target", str(frames_target),
             "--matching-method", "sequential",
+            "--sfm-tool", "colmap",
         ]
     else:
         count = len([p for p in input_path.iterdir() if p.is_file()])
@@ -131,6 +151,25 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind:
     transforms = dataset / "transforms.json"
     if not transforms.exists():
         raise RuntimeError("Camera solve finished without transforms.json")
+
+    transforms_data = json.loads(transforms.read_text())
+    registered = len(transforms_data.get("frames", []))
+    expected = frames_target if input_kind == "video" else len([p for p in input_path.iterdir() if p.is_file()])
+    registration_ratio = registered / max(1, expected)
+    update(
+        stage="camera_solve",
+        progress=25,
+        camera_registration={
+            "registered": registered,
+            "expected": expected,
+            "ratio": registration_ratio,
+        },
+    )
+    if registered < 12 or registration_ratio < 0.35:
+        raise RuntimeError(
+            f"Camera solve registered only {registered}/{expected} views "
+            f"({registration_ratio:.0%}). Capture more translation, overlap and texture."
+        )
 
     method = "splatfacto" if mode == "pro" else "splatfacto-big"
     # Both current Nerfstudio presets train for 30k iterations; BIG lowers
