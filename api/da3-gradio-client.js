@@ -15,7 +15,7 @@ export default async function handler(req,res){
       filter_white_bg:false,
       process_res_method:'low_res',
       save_percentage:10,
-      num_max_points:500,
+      num_max_points:1000,
       infer_gs:Boolean(req.query.gs!=='0'),
       gs_trj_mode:'smooth',
       gs_video_quality:'low'
