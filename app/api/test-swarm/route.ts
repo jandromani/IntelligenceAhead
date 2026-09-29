@@ -21,20 +21,18 @@ export async function GET() {
     sbx = await getAriaSandbox();
     parentGid = await rpc(sbx, 'aria2.addUri', [[TORRENT_URL], {
       'follow-torrent': 'mem',
-      'max-download-limit': '32K',
-      'max-upload-limit': '1K',
       'seed-time': '0',
       'seed-ratio': '0.0',
       'file-allocation': 'none',
     }]);
 
     let parent: any = null;
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 30; i++) {
       parent = await rpc(sbx, 'aria2.tellStatus', [parentGid, FIELDS]);
       childGid = parent?.followedBy?.[0];
       if (childGid) break;
       if (parent?.status === 'error' || parent?.status === 'removed') break;
-      await sleep(500);
+      await sleep(350);
     }
 
     if (!childGid) {
@@ -46,13 +44,20 @@ export async function GET() {
       }, { status: 502 });
     }
 
+    await rpc(sbx, 'aria2.changeOption', [childGid, {
+      'max-download-limit': '32K',
+      'max-upload-limit': '1K',
+      'seed-time': '0',
+      'seed-ratio': '0.0',
+    }]);
+
     let peakConnections = 0;
     let peakSeeders = 0;
     let peakDownloadSpeed = 0;
     let sample: any = null;
     const samples: any[] = [];
 
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 20; i++) {
       sample = await rpc(sbx, 'aria2.tellStatus', [childGid, FIELDS]);
       peakConnections = Math.max(peakConnections, Number(sample?.connections || 0));
       peakSeeders = Math.max(peakSeeders, Number(sample?.numSeeders || 0));
