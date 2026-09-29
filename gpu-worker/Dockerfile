@@ -10,6 +10,7 @@ RUN python -m pip install --no-cache-dir \
 
 COPY main.py /app/main.py
 COPY pipeline.py /app/pipeline.py
+COPY keyframes.py /app/keyframes.py
 
 ENV REALITY_WORKER_ROOT=/data/reality-jobs \
     REALITY_GPU_CONCURRENCY=1 \
