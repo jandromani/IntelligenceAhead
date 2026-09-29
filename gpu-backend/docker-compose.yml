@@ -1,0 +1,22 @@
+services:
+  reality-gpu:
+    build: .
+    ports: ["8008:8008"]
+    environment:
+      REALITY_PRO_SHARED_SECRET: ${REALITY_PRO_SHARED_SECRET}
+      REALITY_CORS_ORIGINS: ${REALITY_CORS_ORIGINS:-https://intelligence-ahead-git-reality-comp-c70dff-jandromanis-projects.vercel.app}
+      DA3_MODEL_ID: ${DA3_MODEL_ID:-depth-anything/DA3NESTED-GIANT-LARGE}
+      REALITY_MAX_FRAMES: ${REALITY_MAX_FRAMES:-72}
+    volumes:
+      - reality_workspace:/workspace
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+volumes:
+  reality_workspace:
+  hf_cache:
