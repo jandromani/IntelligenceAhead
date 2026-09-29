@@ -59,7 +59,7 @@ function setHealth(){
 }
 setHealth(); addEventListener('online',setHealth); addEventListener('offline',setHealth);
 
-function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metric' ? 4 : (state.mode==='ultra' ? 40 : 24)); }
+function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metric' ? 4 : (state.mode==='ultra' ? 24 : 48)); }
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
@@ -490,6 +490,29 @@ function resolveGradioFileUrl(file){
   return file.url||file.path||file.video?.url||file.video?.path||null;
 }
 
+async function videoDuration(file){
+  if(!file)return 0;
+  const url=URL.createObjectURL(file);
+  try{
+    const v=document.createElement('video');v.preload='metadata';v.src=url;
+    await new Promise((resolve,reject)=>{v.onloadedmetadata=resolve;v.onerror=()=>reject(new Error('Could not read video metadata'));});
+    return Number.isFinite(v.duration)?v.duration:0;
+  }finally{URL.revokeObjectURL(url);}
+}
+async function chooseRemoteSampling(video,ultra){
+  if(!video)return {fps:null,duration:0,target:ultra?24:48};
+  const duration=await videoDuration(video);
+  const target=ultra?24:48;
+  // DA3's slider is true sampling FPS. Aim for tens of useful views, not hundreds.
+  const fps=Math.max(.5,Math.min(3,target/Math.max(1,duration)));
+  return {fps:Number(fps.toFixed(2)),duration,target};
+}
+function spreadFiles(files,max){
+  if(!Array.isArray(files)||files.length<=max)return files||[];
+  const out=[];for(let i=0;i<max;i++)out.push(files[Math.round(i*(files.length-1)/(max-1))]);
+  return out;
+}
+
 async function submitPro({video=null,images=[]}){
   show('analyze');buildSteps();
   const ultra=state.mode==='ultra';
@@ -498,12 +521,25 @@ async function submitPro({video=null,images=[]}){
   try{
     const client=await getProClient();
     setStep('upload',8,'START');
-    status('UPLOAD','Sending the complete scan to DA3',video?(ultra?'12 fps video sampling':'8 fps video sampling'):`${images.length} captured views`,8);
+    status('UPLOAD','Sending the room scan to DA3',video?'Adaptive sampling · tens of views, not hundreds':`${Math.min(images.length,ultra?24:48)} selected views`,8);
 
+    const sampling=await chooseRemoteSampling(video,ultra);
+    const selectedImages=spreadFiles(images,ultra?24:48);
+    const videoPayload=video ? {video:handle_file(video),subtitles:null} : null;
+    diag(JSON.stringify({
+      transport:'gradio',
+      input:video?'VideoData':'FileData[]',
+      duration_s:sampling.duration||null,
+      sampling_fps:sampling.fps,
+      target_views:sampling.target,
+      uploaded_images:selectedImages.length,
+      process_res:ultra?'high_res':'low_res',
+      infer_gs:true
+    },null,2));
     const upload=await client.predict('/handle_uploads',{
-      input_video: video ? handle_file(video) : null,
-      input_images: images?.length ? images.map(f=>handle_file(f)) : null,
-      s_time_interval: ultra ? 12 : 8
+      input_video: videoPayload,
+      input_images: selectedImages.length ? selectedImages.map(f=>handle_file(f)) : null,
+      s_time_interval: sampling.fps ?? 1
     });
     const u=upload?.data||[];
     const targetDir=u[1];
@@ -570,6 +606,6 @@ function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 
 // Explain advanced engines without pretending they run in-browser when they do not.
 addEventListener('keydown',(e)=>{
-  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / LIVE:</b> complete video/images → Hugging Face DA3 GPU → all-view camera/depth recovery → native 3DGS head → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / LIVE:</b> same path with high-res DA3 processing and more capture views.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
+  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / LIVE:</b> video/images → adaptive keyframe sampling → Hugging Face DA3 GPU → camera/depth recovery → native 3DGS head → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / LIVE:</b> same path with high-res DA3 processing and more capture views.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
 });
 
