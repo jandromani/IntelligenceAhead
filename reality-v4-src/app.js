@@ -495,7 +495,10 @@ function workerStep(stage,progress){
 async function pollWorkerJob(cfg,job){
   while(true){
     await new Promise(r=>setTimeout(r,1800));
-    const r=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}?access_token=${encodeURIComponent(job.access_token)}`,{cache:'no-store'});
+    const r=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}`,{
+      cache:'no-store',
+      headers:{'X-Reality-Job-Token':job.access_token}
+    });
     if(!r.ok)throw new Error(`GPU job status HTTP ${r.status}`);
     const j=await r.json();
     state.proJob=j;
@@ -551,7 +554,9 @@ async function submitPro({video=null,images=[]}){
     const done=await pollWorkerJob(cfg,job);
     setStep('export',100,done.splats?`${Number(done.splats).toLocaleString()} GS`:'DONE');
     status('DOWNLOAD','Streaming optimized Gaussian PLY','Loading trained splats into SuperSplat',98);
-    const rr=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}/result?access_token=${encodeURIComponent(job.access_token)}`);
+    const rr=await fetch(`${cfg.backend}/jobs/${encodeURIComponent(job.job_id)}/result`,{
+      headers:{'X-Reality-Job-Token':job.access_token}
+    });
     if(!rr.ok)throw new Error(`GPU result HTTP ${rr.status}: ${await rr.text()}`);
     const blob=await rr.blob();
     if(blob.size<1024)throw new Error('GPU worker returned an unexpectedly small PLY.');
