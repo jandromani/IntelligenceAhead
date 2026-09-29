@@ -106,13 +106,14 @@ def assert_job_access(job_id: str, access_token: str):
     return job
 
 
-def worker_entry(job_id: str, input_path: str, mode: str, frames_target: int):
+def worker_entry(job_id: str, input_path: str, input_kind: str, mode: str, frames_target: int):
     try:
         update_job(job_id, status="running", stage="preflight", progress=2, started_at=now())
         result = run_reconstruction(
             job_id=job_id,
             input_path=Path(input_path),
             workdir=job_dir(job_id),
+            input_kind=input_kind,
             mode=mode,
             frames_target=frames_target,
             update=lambda **kw: update_job(job_id, **kw),
@@ -161,7 +162,8 @@ def health():
 
 @app.post("/jobs")
 async def create_job(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    files: list[UploadFile] = File(default=[]),
     mode: str = Form("pro"),
     frames_target: int = Form(0),
     authorization: str | None = Header(default=None),
@@ -179,26 +181,41 @@ async def create_job(
     access_token = secrets.token_urlsafe(32)
     d = job_dir(job_id)
     d.mkdir(parents=True, exist_ok=False)
-    suffix = Path(file.filename or "capture.mp4").suffix.lower() or ".mp4"
-    input_path = d / f"capture{suffix}"
+    if file is None and not files:
+        shutil.rmtree(d, ignore_errors=True)
+        raise HTTPException(400, "Upload one video or one/more images")
 
     max_bytes = int(MAX_UPLOAD_GB * 1024**3)
     written = 0
-    try:
-        with input_path.open("wb") as out:
+    input_kind = "video" if file is not None else "images"
+
+    async def save_upload(src: UploadFile, dst: Path):
+        nonlocal written
+        with dst.open("wb") as out:
             while True:
-                chunk = await file.read(1024 * 1024 * 4)
+                chunk = await src.read(1024 * 1024 * 4)
                 if not chunk:
                     break
                 written += len(chunk)
                 if written > max_bytes:
                     raise HTTPException(413, f"Upload exceeds {MAX_UPLOAD_GB:g} GB worker limit")
                 out.write(chunk)
+        await src.close()
+
+    try:
+        if file is not None:
+            suffix = Path(file.filename or "capture.mp4").suffix.lower() or ".mp4"
+            input_path = d / f"capture{suffix}"
+            await save_upload(file, input_path)
+        else:
+            input_path = d / "images"
+            input_path.mkdir()
+            for i, src in enumerate(files):
+                suffix = Path(src.filename or f"image-{i:04d}.jpg").suffix.lower() or ".jpg"
+                await save_upload(src, input_path / f"image-{i:04d}{suffix}")
     except Exception:
         shutil.rmtree(d, ignore_errors=True)
         raise
-    finally:
-        await file.close()
 
     job = {
         "job_id": job_id,
@@ -208,7 +225,8 @@ async def create_job(
         "progress": 0,
         "mode": mode,
         "frames_target": frames_target,
-        "filename": file.filename,
+        "filename": file.filename if file is not None else f"{len(files)} images",
+        "input_kind": input_kind,
         "bytes": written,
         "created_at": now(),
         "updated_at": now(),
@@ -219,7 +237,7 @@ async def create_job(
     with jobs_lock:
         jobs[job_id] = job
     persist(job_id)
-    executor.submit(worker_entry, job_id, str(input_path), mode, frames_target)
+    executor.submit(worker_entry, job_id, str(input_path), input_kind, mode, frames_target)
 
     return {
         "job_id": job_id,
