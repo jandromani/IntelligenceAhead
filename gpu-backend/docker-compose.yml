@@ -5,7 +5,7 @@ services:
     environment:
       REALITY_PRO_SHARED_SECRET: ${REALITY_PRO_SHARED_SECRET}
       REALITY_CORS_ORIGINS: ${REALITY_CORS_ORIGINS:-https://intelligence-ahead-git-reality-comp-c70dff-jandromanis-projects.vercel.app}
-      DA3_MODEL_ID: ${DA3_MODEL_ID:-depth-anything/DA3NESTED-GIANT-LARGE}
+      DA3_MODEL_ID: ${DA3_MODEL_ID:-depth-anything/DA3-BASE}
       REALITY_MAX_FRAMES: ${REALITY_MAX_FRAMES:-72}
     volumes:
       - reality_workspace:/workspace
