@@ -114,7 +114,7 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind:
             "ns-process-data", "images",
             "--data", str(input_path),
             "--output-dir", str(dataset),
-            "--matching-method", "exhaustive" if count <= 80 else "vocab_tree",
+            "--matching-method", "exhaustive" if count <= 80 else "sequential",
         ]
 
     # Mature room-scale pose bootstrap: frames/images -> COLMAP SfM.
@@ -140,12 +140,8 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind:
         "--output-dir", str(outputs),
         "--experiment-name", "room",
         "--timestamp", "run",
-        "--vis", "tensorboard",
         "--data", str(dataset),
     ]
-    if mode == "ultra":
-        train_cmd.insert(-2, "--pipeline.model.use-scale-regularization")
-        train_cmd.insert(-2, "True")
 
     run(
         train_cmd,
