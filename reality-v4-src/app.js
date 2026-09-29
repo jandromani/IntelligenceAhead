@@ -63,7 +63,7 @@ function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metri
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
-  if(brandSmall) brandSmall.textContent='V4 · INSTANT + PRO GAUSSIAN PIPELINE';
+  if(brandSmall) brandSmall.textContent='V5 · ROOM-SCALE GAUSSIAN PIPELINE';
   const health=document.querySelector('.health');
   if(health && !$('proChip')){
     const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
@@ -516,7 +516,7 @@ async function submitPro({video=null,images=[]}){
 
     let fakeProgress=24;
     const ticker=setInterval(()=>{
-      fakeProgress=Math.min(88,fakeProgress+(ultra?.7:1.15));
+      fakeProgress=Math.min(88,fakeProgress+(ultra ? .7 : 1.15));
       const q=Math.max(0,(fakeProgress-24)/64);
       setStep('infer',Math.min(100,q*125),q>.8?'DONE':'RUNNING');
       if(q>.35)setStep('fusion',Math.min(100,(q-.35)*155),q>.95?'DONE':'SOLVING');
@@ -570,6 +570,6 @@ function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'
 
 // Explain advanced engines without pretending they run in-browser when they do not.
 addEventListener('keydown',(e)=>{
-  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V4',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / LIVE:</b> complete video/images → Hugging Face DA3 GPU → all-view camera/depth recovery → native 3DGS head → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / LIVE:</b> same path with high-res DA3 processing and more capture views.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
+  if(e.key.toLowerCase()==='i' && e.shiftKey) modal('ENGINE MATRIX · V5',`<p><b>INSTANT / LIVE:</b> DA3-BASE-derived 4-view ONNX → pose-aware fusion → Gaussian PLY → SuperSplat WebGPU.</p><p><b>PRO / LIVE:</b> complete video/images → Hugging Face DA3 GPU → all-view camera/depth recovery → native 3DGS head → Gaussian PLY → SuperSplat.</p><p><b>ULTRA / LIVE:</b> same path with high-res DA3 processing and more capture views.</p><p><b>METRIC / PARTIAL:</b> direct PLY/SPLAT/SOG import is live; automatic SplaTAM RGB-D ingestion remains the next backend adapter.</p><p><b>SEMANTICS / LIVE:</b> Florence-2 WebGPU after geometry.</p><p><b>EXCLUDED FROM COMMERCIAL CORE:</b> non-commercial model weights / repos are not silently shipped.</p>`);
 });
 
