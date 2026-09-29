@@ -249,5 +249,21 @@ def run_reconstruction(job_id: str, input_path: Path, workdir: Path, input_kind:
         "finished_at": time.time(),
     }
     (workdir / "result.json").write_text(json.dumps(result_meta, indent=2, default=str))
+
+    # Privacy by default: once the final PLY exists, raw property media and
+    # training caches are no longer required for serving the result.
+    if os.environ.get("REALITY_KEEP_INTERMEDIATES", "0") != "1":
+        cleanup_targets = [dataset, outputs, workdir / "selected_frames", workdir / "_candidates"]
+        if input_path not in cleanup_targets:
+            cleanup_targets.append(input_path)
+        for target in cleanup_targets:
+            try:
+                if target.is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+                elif target.exists():
+                    target.unlink()
+            except Exception:
+                pass
+
     update(stage="finalize", progress=99, splats=splats)
     return result_meta
