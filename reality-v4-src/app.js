@@ -403,269 +403,274 @@ async function ensureSession(){
 }
 
 
-function instantDiag(result){
-  const x=result.stats||{};
-  return [
-    `PRESET       ${String(x.preset||state.instantPreset).toUpperCase()} · CLEAN ${x.clean??state.instantClean}%`,
-    `CANDIDATES   ${(x.candidates||0).toLocaleString()}`,
-    `CONF/RANGE   -${((x.confidenceRejected||0)+(x.rangeRejected||0)).toLocaleString()}`,
-    `DEPTH EDGES  -${(x.edgeRejected||0).toLocaleString()}`,
-    `SKY/BG       -${(x.skyRejected||0).toLocaleString()}`,
-    `MVIEW FAIL   -${(x.mvsRejected||0).toLocaleString()}`,
-    `VOXEL MERGE  -${(x.mergedAway||0).toLocaleString()}`,
-    `ISLANDS      -${(x.islandRejected||0).toLocaleString()}`,
-    `FINAL        ${(x.final||result.points.length).toLocaleString()} GAUSSIANS`
-  ].join('\n');
-}
-async function applyInstantResult(result,label='DA3 CLEAN FUSION'){
-  $('metricConf').textContent=`${Math.round(result.confKeep*100)}% final`;
-  $('metricGauss').textContent=result.points.length.toLocaleString();
-  $('metricPose').textContent=result.poseSpread.toFixed(2);
-  diag(instantDiag(result));
-  setStep('fusion',100,'CLEAN');
-  status('GAUSSIAN PACK','Encoding filtered splats','MVS consistency · voxel merge · anisotropic surfaces',84);setStep('gauss',25,'PACKING');
-  const ply=writeGaussianPLY(result.points);state.plyBlob=ply;
-  if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);state.plyUrl=URL.createObjectURL(ply);
-  setStep('gauss',100,`${(ply.size/1048576).toFixed(1)} MB`);
-  status('VIEWER','Starting SuperSplat WebGPU','Loading cleaned Gaussian scene',95);
-  await openWorldBlob(state.plyUrl,`${INSTANT_PRESETS[state.instantPreset].label} · ${state.instantClean}% CLEAN`);
-  setStep('viewer',100,'LIVE');
-  status('DONE','Reality cleaned',`${result.points.length.toLocaleString()} Gaussian primitives`,100);
-}
-async function refilterInstant(){
-  if(!state.lastInstant?.out||!state.lastInstant?.colors)return toast('Run one INSTANT reconstruction first');
-  try{
-    show('analyze');buildSteps();setStep('keyframes',100,'CACHE');setStep('weights',100,'CACHE');setStep('infer',100,'CACHE');
-    status('REFILTER','Rebuilding the same DA3 geometry',`${INSTANT_PRESETS[state.instantPreset].label} · ${state.instantClean}% CLEAN · no model rerun`,65);
-    await new Promise(r=>requestAnimationFrame(()=>r()));
-    const result=fuseDA3(state.lastInstant.out,state.lastInstant.colors);
-    await applyInstantResult(result,'DA3 REFILTER');
-  }catch(err){
-    console.error(err);diag(err.stack||err.message);modal('Refilter stopped',`<p>${escapeHtml(err.message)}</p><p>Move the slider toward <b>DENSE</b> or choose RAW.</p>`);show('world');
-  }
-}
 
-async function compileWorld(frames,alreadyAnalyze=false){
-  show('analyze');buildSteps();renderFrames();setStep('keyframes',100,'4 VIEWS');state.sourceFrame=frames[0];
-  $('metricInput').textContent=`4 × 504² · ${INSTANT_PRESETS[state.instantPreset].label}`;
-  diag(`True 4-view DA3 inference. Fusion preset: ${INSTANT_PRESETS[state.instantPreset].label}; CLEAN ${state.instantClean}%.`);
-  const preview=$('analysisCanvas');preview.width=SIZE;preview.height=SIZE;preview.getContext('2d').drawImage(frames[0].img,0,0,SIZE,SIZE);
-  try{
-    status('PREPROCESS','Normalizing four views','ImageNet normalization · NCHW',12);const {tensor,colors}=prepFrames(frames);
-    const session=await ensureSession();
-    status('MULTIVIEW INFERENCE','Recovering visual space','Depth · confidence · intrinsics · extrinsics',50);setStep('infer',35,'RUNNING');
-    const input=new ort.Tensor('float32',tensor,[1,4,3,SIZE,SIZE]);
-    const t0=performance.now(),out=await session.run({images:input}),dt=(performance.now()-t0)/1000;
-    state.lastInstant={out,colors,frames,createdAt:Date.now()};
-    setStep('infer',100,`${dt.toFixed(1)}s`);
-    status('CLEAN FUSION','Cross-checking every point against other cameras','Depth edges · MVS consistency · sky/background · voxel merge',70);setStep('fusion',15,'FILTER');
-    const result=fuseDA3(out,colors);
-    await applyInstantResult(result,'DA3 CLEAN FUSION');
-  }catch(err){
-    console.error(err);diag(err.stack||err.message);
-    modal('Reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p>The local path is intentionally strict now. Try <b>RAW</b> or move CLEAN toward DENSE if a difficult scene loses too much geometry.</p>`);
-    show('landing');
-  }
+function percentile(arr,p){
+  const a=Array.from(arr).filter(Number.isFinite).sort((x,y)=>x-y);
+  if(!a.length)return 0;
+  return a[Math.min(a.length-1,Math.max(0,Math.floor((a.length-1)*p)))];
 }
-
-function percentile(arr,p){const a=Array.from(arr).filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return 0;return a[Math.min(a.length-1,Math.max(0,Math.floor((a.length-1)*p)))];}
 function invertRt(ext,base){
-  // world->camera [R|t]. Return camera->world R^T and translation -R^T t.
   const r=[ext[base],ext[base+1],ext[base+2],ext[base+4],ext[base+5],ext[base+6],ext[base+8],ext[base+9],ext[base+10]];
-  const t=[ext[base+3],ext[base+7],ext[base+11]]; const rt=[r[0],r[3],r[6],r[1],r[4],r[7],r[2],r[5],r[8]];
-  const c=[-(rt[0]*t[0]+rt[1]*t[1]+rt[2]*t[2]),-(rt[3]*t[0]+rt[4]*t[1]+rt[5]*t[2]),-(rt[6]*t[0]+rt[7]*t[1]+rt[8]*t[2])]; return {rt,c};
+  const t=[ext[base+3],ext[base+7],ext[base+11]];
+  const rt=[r[0],r[3],r[6],r[1],r[4],r[7],r[2],r[5],r[8]];
+  const c=[-(rt[0]*t[0]+rt[1]*t[1]+rt[2]*t[2]),-(rt[3]*t[0]+rt[4]*t[1]+rt[5]*t[2]),-(rt[6]*t[0]+rt[7]*t[1]+rt[8]*t[2])];
+  return {rt,c,R:r,t};
 }
 function norm3(v){const n=Math.hypot(v[0],v[1],v[2])||1;return[v[0]/n,v[1]/n,v[2]/n];}
 function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
 function cross3(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function add3(a,b){return[a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function sub3(a,b){return[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function mul3(v,s){return[v[0]*s,v[1]*s,v[2]*s];}
+function mat3Mul(A,B){return[
+  A[0]*B[0]+A[1]*B[3]+A[2]*B[6],A[0]*B[1]+A[1]*B[4]+A[2]*B[7],A[0]*B[2]+A[1]*B[5]+A[2]*B[8],
+  A[3]*B[0]+A[4]*B[3]+A[5]*B[6],A[3]*B[1]+A[4]*B[4]+A[5]*B[7],A[3]*B[2]+A[4]*B[5]+A[5]*B[8],
+  A[6]*B[0]+A[7]*B[3]+A[8]*B[6],A[6]*B[1]+A[7]*B[4]+A[8]*B[7],A[6]*B[2]+A[7]*B[5]+A[8]*B[8]
+];}
+function mat3T(A){return[A[0],A[3],A[6],A[1],A[4],A[7],A[2],A[5],A[8]];}
+function mat3Vec(A,v){return[A[0]*v[0]+A[1]*v[1]+A[2]*v[2],A[3]*v[0]+A[4]*v[1]+A[5]*v[2],A[6]*v[0]+A[7]*v[1]+A[8]*v[2]];}
+function mat3ToQuat(m){
+  const tr=m[0]+m[4]+m[8];let w,x,y,z;
+  if(tr>0){const S=Math.sqrt(tr+1)*2;w=.25*S;x=(m[7]-m[5])/S;y=(m[2]-m[6])/S;z=(m[3]-m[1])/S;}
+  else if(m[0]>m[4]&&m[0]>m[8]){const S=Math.sqrt(1+m[0]-m[4]-m[8])*2;w=(m[7]-m[5])/S;x=.25*S;y=(m[1]+m[3])/S;z=(m[2]+m[6])/S;}
+  else if(m[4]>m[8]){const S=Math.sqrt(1+m[4]-m[0]-m[8])*2;w=(m[2]-m[6])/S;x=(m[1]+m[3])/S;y=.25*S;z=(m[5]+m[7])/S;}
+  else{const S=Math.sqrt(1+m[8]-m[0]-m[4])*2;w=(m[3]-m[1])/S;x=(m[2]+m[6])/S;y=(m[5]+m[7])/S;z=.25*S;}
+  const n=Math.hypot(w,x,y,z)||1;return[w/n,x/n,y/n,z/n];
+}
+function quatToMat3(q){
+  const [w,x,y,z]=q,xx=x*x,yy=y*y,zz=z*z,xy=x*y,xz=x*z,yz=y*z,wx=w*x,wy=w*y,wz=w*z;
+  return[1-2*(yy+zz),2*(xy-wz),2*(xz+wy),2*(xy+wz),1-2*(xx+zz),2*(yz-wx),2*(xz-wy),2*(yz+wx),1-2*(xx+yy)];
+}
+function averageRotations(mats){
+  if(mats.length===1)return mats[0];
+  const q0=mat3ToQuat(mats[0]),sum=[0,0,0,0];
+  for(const m of mats){
+    let q=mat3ToQuat(m);if(q0[0]*q[0]+q0[1]*q[1]+q0[2]*q[2]+q0[3]*q[3]<0)q=q.map(v=>-v);
+    for(let i=0;i<4;i++)sum[i]+=q[i];
+  }
+  const n=Math.hypot(...sum)||1;return quatToMat3(sum.map(v=>v/n));
+}
 function quatFromZ(n){
-  n=norm3(n); const d=Math.max(-1,Math.min(1,n[2]));
-  if(d<-0.9999)return [0,1,0,0];
-  const w=Math.sqrt((1+d)*.5), k=1/(2*w||1);
-  return [w,-n[1]*k,n[0]*k,0];
+  n=norm3(n);const d=Math.max(-1,Math.min(1,n[2]));
+  if(d<-0.9999)return[0,1,0,0];
+  const w=Math.sqrt((1+d)*.5),k=1/(2*w||1);return[w,-n[1]*k,n[0]*k,0];
 }
+function identitySim3(){return{s:1,R:[1,0,0,0,1,0,0,0,1],t:[0,0,0]};}
+function applySim3(T,p){return add3(mul3(mat3Vec(T.R,p),T.s),T.t);}
+function applySim3Dir(T,n){return norm3(mat3Vec(T.R,n));}
+function composeSim3(A,B){return{s:A.s*B.s,R:mat3Mul(A.R,B.R),t:add3(mul3(mat3Vec(A.R,B.t),A.s),A.t)};}
 
-function bilinearDepth(arr,base,x,y){
-  if(x<0||y<0||x>SIZE-1||y>SIZE-1)return NaN;
-  const x0=Math.floor(x),y0=Math.floor(y),x1=Math.min(SIZE-1,x0+1),y1=Math.min(SIZE-1,y0+1);
-  const tx=x-x0,ty=y-y0;
-  const a=arr[base+y0*SIZE+x0],b=arr[base+y0*SIZE+x1],c=arr[base+y1*SIZE+x0],d=arr[base+y1*SIZE+x1];
-  if(![a,b,c,d].every(Number.isFinite))return NaN;
-  return a*(1-tx)*(1-ty)+b*tx*(1-ty)+c*(1-tx)*ty+d*tx*ty;
-}
-function localDepthEdge(depth,base,x,y,z,step){
-  let mx=0,valid=0;
-  for(const [dx,dy] of [[step,0],[-step,0],[0,step],[0,-step]]){
-    const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SIZE||yy>=SIZE)continue;
-    const d=depth[base+yy*SIZE+xx];if(!Number.isFinite(d)||d<=0)continue;
-    mx=Math.max(mx,Math.abs(d-z)/Math.max(.001,(Math.abs(d)+Math.abs(z))*.5));valid++;
-  }
-  return valid?mx:0;
-}
-function likelySky(r,g,b,y,z,farDepth){
-  const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max?((max-min)/max):0;
-  const upper=y<SIZE*.62;
-  const blue=upper&&b>95&&b>r*1.055&&b>g*1.015&&(b-r)>9;
-  const cloud= y<SIZE*.34 && max>188 && sat<.10 && z>farDepth;
-  return blue||cloud;
-}
-function multiviewAgreement(wx,wy,wz,src,depth,conf,viewParams,confFloor,tol){
-  let agree=0,visible=0,occluded=0;
-  for(let j=0;j<4;j++){
-    if(j===src)continue;
-    const v=viewParams[j],R=v.R,t=v.t;
-    const xc=R[0]*wx+R[1]*wy+R[2]*wz+t[0];
-    const yc=R[3]*wx+R[4]*wy+R[5]*wz+t[1];
-    const zc=R[6]*wx+R[7]*wy+R[8]*wz+t[2];
-    if(zc<=1e-5)continue;
-    const u=v.fx*xc/zc+v.cx,py=v.fy*yc/zc+v.cy;
-    if(u<1||py<1||u>SIZE-2||py>SIZE-2)continue;
-    const ii=j*SIZE*SIZE+Math.round(py)*SIZE+Math.round(u);
-    if(conf[ii]<confFloor*.72)continue;
-    const dz=bilinearDepth(depth,j*SIZE*SIZE,u,py);
-    if(!Number.isFinite(dz)||dz<=0)continue;
-    // A nearer observed surface can legitimately occlude this point.
-    if(zc>dz*(1+tol*1.7)){occluded++;continue;}
-    visible++;
-    const rel=Math.abs(dz-zc)/Math.max(.001,(Math.abs(dz)+Math.abs(zc))*.5);
-    if(rel<=tol)agree++;
-  }
-  return {agree,visible,occluded};
-}
-function snapManhattan(n,strength){
-  if(!strength)return n;
-  const a=n.map(Math.abs),axis=a.indexOf(Math.max(...a));
-  if(a[axis]<strength)return n;
-  const out=[0,0,0];out[axis]=n[axis]>=0?1:-1;return out;
-}
-function voxelMerge(points,voxel){
-  if(!voxel||points.length<2)return points;
-  const map=new Map();
-  for(const p of points){
-    const ix=Math.floor(p.x/voxel),iy=Math.floor(p.y/voxel),iz=Math.floor(p.z/voxel),key=`${ix},${iy},${iz}`;
-    let a=map.get(key);
-    if(!a){a={key,ix,iy,iz,n:0,x:0,y:0,z:0,nx:0,ny:0,nz:0,r:0,g:0,b:0,sx:0,sy:0,sz:0,conf:0,alpha:0,mask:0};map.set(key,a);}
-    a.n++;a.x+=p.x;a.y+=p.y;a.z+=p.z;a.nx+=p.n[0];a.ny+=p.n[1];a.nz+=p.n[2];a.r+=p.r;a.g+=p.g;a.b+=p.b;
-    a.sx+=p.sx;a.sy+=p.sy;a.sz+=p.sz;a.conf+=p.conf;a.alpha+=p.alpha;a.mask|=(1<<p.view);
-  }
-  const out=[];
-  for(const a of map.values()){
-    const n=a.n,normal=norm3([a.nx/n,a.ny/n,a.nz/n]);
-    out.push({x:a.x/n,y:a.y/n,z:a.z/n,n:normal,r:a.r/n,g:a.g/n,b:a.b/n,sx:a.sx/n,sy:a.sy/n,sz:a.sz/n,conf:a.conf/n,alpha:a.alpha/n,q:quatFromZ(normal),_cell:[a.ix,a.iy,a.iz],viewMask:a.mask});
-  }
-  return out;
-}
-function pruneIsolatedVoxels(points,minNeighbors){
-  if(!minNeighbors||points.length<2)return {points,rejected:0};
-  const set=new Set(points.map(p=>p._cell?.join(',')));
-  const kept=[];
-  for(const p of points){
-    const [x,y,z]=p._cell||[0,0,0];let near=0;
-    outer:for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-      if(!dx&&!dy&&!dz)continue;
-      if(set.has(`${x+dx},${y+dy},${z+dz}`)&&++near>=minNeighbors)break outer;
-    }
-    if(near>=minNeighbors)kept.push(p);
-  }
-  return {points:kept,rejected:points.length-kept.length};
-}
-function fuseDA3(out,colors){
+function extractDA3Arrays(out){
   const depth=out.depth?.data||out[Object.keys(out).find(k=>k.includes('depth')&&!k.includes('conf'))]?.data;
   const conf=out.depth_conf?.data||out[Object.keys(out).find(k=>k.includes('conf'))]?.data;
   const ext=out.extrinsics?.data||out[Object.keys(out).find(k=>k.includes('extr'))]?.data;
   const K=out.intrinsics?.data||out[Object.keys(out).find(k=>k.includes('intr'))]?.data;
   if(!depth||!conf||!ext||!K)throw new Error(`Unexpected DA3 outputs: ${Object.keys(out).join(', ')}`);
-
-  const cfg=instantConfig(),plane=SIZE*SIZE;
-  const sampleConf=[];for(let i=0;i<conf.length;i+=19)if(Number.isFinite(conf[i]))sampleConf.push(conf[i]);
-  const confTh=percentile(sampleConf,cfg.confQ);
-  const sampleDepth=[];for(let i=0;i<depth.length;i+=19)if(Number.isFinite(depth[i])&&depth[i]>0)sampleDepth.push(depth[i]);
-  const dLo=percentile(sampleDepth,cfg.depthLo),dHi=percentile(sampleDepth,cfg.depthHi),farDepth=percentile(sampleDepth,.82);
-  const viewParams=[],cams=[];
-  for(let v=0;v<4;v++){
-    const ebase=v*12,kbase=v*9,{rt,c}=invertRt(ext,ebase);
-    cams.push({c,rt});
-    viewParams.push({
-      R:[ext[ebase],ext[ebase+1],ext[ebase+2],ext[ebase+4],ext[ebase+5],ext[ebase+6],ext[ebase+8],ext[ebase+9],ext[ebase+10]],
-      t:[ext[ebase+3],ext[ebase+7],ext[ebase+11]],
-      fx:K[kbase],fy:K[kbase+4],cx:K[kbase+2],cy:K[kbase+5]
-    });
+  return{depth,conf,ext,K};
+}
+function windowSpecs(frames){
+  if(frames.length<4)throw new Error('V7 needs at least four overlapping views.');
+  const starts=[];for(let s=0;s<=frames.length-4;s+=2)starts.push(s);
+  const last=frames.length-4;if(!starts.includes(last))starts.push(last);
+  return starts.map(start=>{
+    const chrono=[start,start+1,start+2,start+3];
+    const inputIds=[start+2,start+1,start+3,start]; // temporal middle first: DA3 fixed-first reference behaves closer to official video guidance
+    return{start,chrono,inputIds,inputFrames:inputIds.map(i=>frames[i])};
+  });
+}
+function windowCamera(win,slot){
+  const e=slot*12,k=slot*9,inv=invertRt(win.ext,e);
+  return{...inv,fx:win.K[k],fy:win.K[k+4],cx:win.K[k+2],cy:win.K[k+5]};
+}
+function unprojectAt(win,slot,x,y){
+  const base=slot*SIZE*SIZE,i=base+y*SIZE+x,z=win.depth[i];
+  if(!Number.isFinite(z)||z<=0)return null;
+  const cam=windowCamera(win,slot),pc=[(x-cam.cx)/cam.fx*z,(y-cam.cy)/cam.fy*z,z];
+  return{p:add3(mat3Vec(cam.rt,pc),cam.c),z,conf:win.conf[i],cam};
+}
+function sampledPercentile(data,base,p,step=23){
+  const a=[];for(let i=base;i<base+SIZE*SIZE;i+=step){const v=data[i];if(Number.isFinite(v)&&v>0)a.push(v);}
+  return percentile(a,p);
+}
+function depthEdgeSoft(win,slot,x,y,z,step,cfg){
+  let mx=0,n=0,base=slot*SIZE*SIZE;
+  for(const[dx,dy]of[[step,0],[-step,0],[0,step],[0,-step]]){
+    const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SIZE||yy>=SIZE)continue;
+    const d=win.depth[base+yy*SIZE+xx];if(!Number.isFinite(d)||d<=0)continue;
+    mx=Math.max(mx,Math.abs(d-z)/Math.max(.001,(Math.abs(d)+Math.abs(z))*.5));n++;
   }
-
-  const stats={preset:state.instantPreset,clean:state.instantClean,candidates:0,confidenceRejected:0,rangeRejected:0,edgeRejected:0,skyRejected:0,mvsRejected:0,preMerge:0,mergedAway:0,islandRejected:0,final:0};
-  const points=[],stride=navigator.gpu?2:3;
-  for(let v=0;v<4;v++){
-    const {c,rt}=cams[v],vp=viewParams[v],base=v*plane;
-    for(let y=1+stride;y<SIZE-stride-1;y+=stride)for(let x=1+stride;x<SIZE-stride-1;x+=stride){
-      stats.candidates++;
-      const pi=base+y*SIZE+x,z=depth[pi],cf=conf[pi];
-      if(!Number.isFinite(z)||z<=dLo||z>=dHi){stats.rangeRejected++;continue;}
-      if(cf<confTh){stats.confidenceRejected++;continue;}
-      const edge=localDepthEdge(depth,base,x,y,z,stride);
-      if(edge>cfg.edgeRel){stats.edgeRejected++;continue;}
-
-      const ci=(y*SIZE+x)*4,r=colors[v][ci],g=colors[v][ci+1],b=colors[v][ci+2];
-      if(cfg.sky&&likelySky(r,g,b,y,z,farDepth)){stats.skyRejected++;continue;}
-
-      const xc=(x-vp.cx)/vp.fx*z,yc=(y-vp.cy)/vp.fy*z,zc=z;
-      const wx=rt[0]*xc+rt[1]*yc+rt[2]*zc+c[0];
-      const wy=rt[3]*xc+rt[4]*yc+rt[5]*zc+c[1];
-      const wz=rt[6]*xc+rt[7]*yc+rt[8]*zc+c[2];
-
-      if(cfg.minAgree){
-        const mv=multiviewAgreement(wx,wy,wz,v,depth,conf,viewParams,confTh,cfg.mvsTol);
-        if(mv.agree<cfg.minAgree && !(cfg.allowOrphan&&mv.visible===0)){stats.mvsRejected++;continue;}
-      }
-
-      let nw=[0,0,1];
-      const zr=depth[pi+stride],zd=depth[pi+stride*SIZE];
-      if(Number.isFinite(zr)&&Number.isFinite(zd)&&zr>0&&zd>0){
-        const ar=[xc,yc,zc];
-        const br=[(x+stride-vp.cx)/vp.fx*zr,(y-vp.cy)/vp.fy*zr,zr];
-        const dr=[(x-vp.cx)/vp.fx*zd,(y+stride-vp.cy)/vp.fy*zd,zd];
-        const t1=[br[0]-ar[0],br[1]-ar[1],br[2]-ar[2]],t2=[dr[0]-ar[0],dr[1]-ar[1],dr[2]-ar[2]];
-        const nc=norm3(cross3(t1,t2));
-        nw=norm3([rt[0]*nc[0]+rt[1]*nc[1]+rt[2]*nc[2],rt[3]*nc[0]+rt[4]*nc[1]+rt[5]*nc[2],rt[6]*nc[0]+rt[7]*nc[1]+rt[8]*nc[2]]);
-      }
-      points.push({x:wx,y:wy,z:wz,nw,r,g,b,depth:z,conf:cf,view:v,foot:z/Math.sqrt(Math.max(1,vp.fx*vp.fy))*stride});
+  if(!n||cfg.edgeSoft>5)return 1;
+  const r=mx/Math.max(.025,cfg.edgeSoft);return Math.exp(-r*r);
+}
+function windowSoftSupport(win,slot,pLocal,cfg){
+  let sum=0,n=0;
+  for(let j=0;j<4;j++){
+    if(j===slot)continue;const c=windowCamera(win,j);
+    const pc=add3(mat3Vec(c.R,pLocal),c.t),z=pc[2];if(z<=1e-5)continue;
+    const u=c.fx*pc[0]/z+c.cx,v=c.fy*pc[1]/z+c.cy;if(u<1||v<1||u>SIZE-2||v>SIZE-2)continue;
+    const ix=Math.round(u),iy=Math.round(v),base=j*SIZE*SIZE,d=win.depth[base+iy*SIZE+ix];if(!Number.isFinite(d)||d<=0)continue;
+    const rel=Math.abs(d-z)/Math.max(.001,(Math.abs(d)+Math.abs(z))*.5);
+    sum+=Math.exp(-Math.pow(rel/.14,2));n++;
+  }
+  return n?(.42+.58*sum/n):.58;
+}
+function fixedRotationFit(pairs,R){
+  let sw=0,cp=[0,0,0],cq=[0,0,0];
+  for(const a of pairs){sw+=a.w;cp=add3(cp,mul3(a.p,a.w));cq=add3(cq,mul3(a.q,a.w));}
+  if(sw<=0)return null;cp=mul3(cp,1/sw);cq=mul3(cq,1/sw);
+  let num=0,den=0;
+  for(const a of pairs){const pp=sub3(a.p,cp),qq=sub3(a.q,cq),rp=mat3Vec(R,pp);num+=a.w*dot3(qq,rp);den+=a.w*dot3(pp,pp);}
+  let scale=den>1e-9?num/den:1;if(!Number.isFinite(scale)||scale<=0)scale=1;
+  scale=Math.max(.25,Math.min(4,scale));
+  const t=sub3(cq,mul3(mat3Vec(R,cp),scale));
+  return{s:scale,R,t};
+}
+function estimateWindowSim3(prev,cur){
+  const common=cur.frameIds.filter(id=>prev.frameIds.includes(id));
+  if(!common.length)throw new Error('Streaming windows lost overlap.');
+  const rotations=[];
+  for(const id of common){
+    const a=windowCamera(prev,prev.frameIds.indexOf(id)),b=windowCamera(cur,cur.frameIds.indexOf(id));
+    rotations.push(mat3Mul(mat3T(a.R),b.R));
+  }
+  const R=averageRotations(rotations),pairs=[];
+  for(const id of common){
+    const sa=prev.frameIds.indexOf(id),sb=cur.frameIds.indexOf(id);
+    const ca=sampledPercentile(prev.conf,sa*SIZE*SIZE,.28),cb=sampledPercentile(cur.conf,sb*SIZE*SIZE,.28);
+    for(let y=12;y<SIZE-12;y+=18)for(let x=12;x<SIZE-12;x+=18){
+      const ia=sa*SIZE*SIZE+y*SIZE+x,ib=sb*SIZE*SIZE+y*SIZE+x;
+      if(prev.conf[ia]<ca||cur.conf[ib]<cb)continue;
+      const A=unprojectAt(prev,sa,x,y),B=unprojectAt(cur,sb,x,y);if(!A||!B)continue;
+      pairs.push({p:B.p,q:A.p,w:1});
     }
   }
-  if(points.length<1800)throw new Error(`${INSTANT_PRESETS[state.instantPreset].label} filtering left only ${points.length} points. Move DENSE↔CLEAN toward DENSE or capture with more overlap.`);
-
-  const c0=cams[0].c,rt0=cams[0].rt;
-  const right=norm3([rt0[0],rt0[3],rt0[6]]),down=norm3([rt0[1],rt0[4],rt0[7]]),forward=norm3([rt0[2],rt0[5],rt0[8]]);
-  const up=[-down[0],-down[1],-down[2]],back=[-forward[0],-forward[1],-forward[2]];
-  for(const p of points){
-    const d=[p.x-c0[0],p.y-c0[1],p.z-c0[2]];
-    p.x=dot3(d,right);p.y=dot3(d,up);p.z=dot3(d,back);
-    p.n=snapManhattan(norm3([dot3(p.nw,right),dot3(p.nw,up),dot3(p.nw,back)]),cfg.manhattan);
+  if(pairs.length<80)throw new Error(`Only ${pairs.length} dense overlap correspondences for Sim(3). Capture more overlap.`);
+  let T=fixedRotationFit(pairs,R);if(!T)throw new Error('Sim(3) alignment failed.');
+  let residual=pairs.map(a=>Math.hypot(...sub3(a.q,applySim3(T,a.p))));
+  const cut=Math.max(1e-4,percentile(residual,.68)*1.75);
+  const inliers=pairs.filter((a,i)=>residual[i]<=cut);
+  if(inliers.length>=50)T=fixedRotationFit(inliers,R)||T;
+  residual=inliers.map(a=>Math.hypot(...sub3(a.q,applySim3(T,a.p))));
+  return{T,pairs:pairs.length,inliers:inliers.length,rmse:Math.sqrt(residual.reduce((s,x)=>s+x*x,0)/Math.max(1,residual.length))};
+}
+function frameNormal(win,slot,x,y,z,step){
+  const base=slot*SIZE*SIZE,c=windowCamera(win,slot),i=base+y*SIZE+x,zr=win.depth[i+step],zd=win.depth[i+step*SIZE];
+  if(!Number.isFinite(zr)||!Number.isFinite(zd)||zr<=0||zd<=0)return[0,0,1];
+  const a=[(x-c.cx)/c.fx*z,(y-c.cy)/c.fy*z,z],b=[(x+step-c.cx)/c.fx*zr,(y-c.cy)/c.fy*zr,zr],d=[(x-c.cx)/c.fx*zd,(y+step-c.cy)/c.fy*zd,zd];
+  const nc=norm3(cross3(sub3(b,a),sub3(d,a)));return norm3(mat3Vec(c.rt,nc));
+}
+function generateFramePoints(win,slot,T,cfg,frameId){
+  const base=slot*SIZE*SIZE,confLo=sampledPercentile(win.conf,base,cfg.confQ),confHi=Math.max(confLo+1e-6,sampledPercentile(win.conf,base,.92));
+  const depthLo=sampledPercentile(win.depth,base,.004),depthHi=sampledPercentile(win.depth,base,.998),farDepth=sampledPercentile(win.depth,base,cfg.shellQ);
+  const c=windowCamera(win,slot),color=win.colors[slot],stride=navigator.gpu?2:3,out=[];
+  for(let y=1+stride;y<SIZE-stride-1;y+=stride)for(let x=1+stride;x<SIZE-stride-1;x+=stride){
+    const i=base+y*SIZE+x,z=win.depth[i],cf=win.conf[i];if(!Number.isFinite(z)||z<=depthLo||z>=depthHi||cf<confLo)continue;
+    const pc=[(x-c.cx)/c.fx*z,(y-c.cy)/c.fy*z,z],local=add3(mat3Vec(c.rt,pc),c.c);
+    const confW=Math.max(0,Math.min(1,(cf-confLo)/(confHi-confLo))),edgeW=depthEdgeSoft(win,slot,x,y,z,stride,cfg),support=windowSoftSupport(win,slot,local,cfg);
+    const weight=(.28+.72*confW)*(.35+.65*edgeW)*(.42+.58*support);if(weight<.075)continue;
+    const world=applySim3(T,local),normal=applySim3Dir(T,frameNormal(win,slot,x,y,z,stride)),ci=(y*SIZE+x)*4;
+    out.push({x:world[0],y:world[1],z:world[2],n:normal,r:color[ci],g:color[ci+1],b:color[ci+2],weight,far:z>=farDepth,foot:z/Math.sqrt(Math.max(1,c.fx*c.fy))*stride*T.s,frameId});
   }
-
-  const sample=points.filter((_,i)=>i%31===0);
-  const mx=percentile(sample.map(p=>p.x),.5),my=percentile(sample.map(p=>p.y),.5),mz=percentile(sample.map(p=>p.z),.5);
-  const radii=sample.map(p=>Math.hypot(p.x-mx,p.y-my,p.z-mz));
-  const rad=Math.max(1e-4,percentile(radii,.90)),scale=2.8/rad;
+  return out;
+}
+function cameraGlobal(win,frameId){
+  const slot=win.frameIds.indexOf(frameId),c=windowCamera(win,slot);
+  return{c:applySim3(win.T,c.c),rt:mat3Mul(win.T.R,c.rt)};
+}
+function dominantNormalKey(n){const a=n.map(Math.abs),axis=a.indexOf(Math.max(...a));return`${axis}${n[axis]>=0?'+':'-'}`;}
+function surfaceAwareMerge(points,cfg){
+  if(!cfg.voxel)return points.map(p=>({...p,q:quatFromZ(p.n)}));
+  const map=new Map();
   for(const p of points){
-    p.x=(p.x-mx)*scale;p.y=(p.y-my)*scale;p.z=(p.z-mz)*scale;
-    const tangent=Math.max(.0017,Math.min(cfg.maxScale,p.foot*scale*cfg.sizeMul));
-    const far=Math.max(0,Math.min(1,(p.depth-dLo)/Math.max(1e-5,dHi-dLo)));
-    const farShrink=cfg.sky?1-.30*Math.max(0,(far-.65)/.35):1;
-    p.sx=tangent*farShrink;p.sy=tangent*farShrink;p.sz=Math.max(.0007,tangent*cfg.thickness);
-    p.alpha=Math.max(.72,cfg.opacity-(cfg.sky?Math.max(0,far-.72)*.22:0));
+    const voxel=p.far?cfg.voxel*2.4:cfg.voxel,ix=Math.floor(p.x/voxel),iy=Math.floor(p.y/voxel),iz=Math.floor(p.z/voxel);
+    const key=`${p.far?'B':'N'}:${ix},${iy},${iz}:${dominantNormalKey(p.n)}`,w=Math.max(.05,p.weight);
+    let a=map.get(key);
+    if(!a){a={w:0,x:0,y:0,z:0,nx:0,ny:0,nz:0,r:0,g:0,b:0,sx:0,sy:0,sz:0,alpha:0,far:p.far};map.set(key,a);}
+    a.w+=w;a.x+=p.x*w;a.y+=p.y*w;a.z+=p.z*w;a.nx+=p.n[0]*w;a.ny+=p.n[1]*w;a.nz+=p.n[2]*w;a.r+=p.r*w;a.g+=p.g*w;a.b+=p.b*w;a.sx+=p.sx*w;a.sy+=p.sy*w;a.sz+=p.sz*w;a.alpha+=p.alpha*w;
+  }
+  const out=[];
+  for(const a of map.values()){const w=a.w,n=norm3([a.nx/w,a.ny/w,a.nz/w]);out.push({x:a.x/w,y:a.y/w,z:a.z/w,n,r:a.r/w,g:a.g/w,b:a.b/w,sx:a.sx/w,sy:a.sy/w,sz:a.sz/w,alpha:a.alpha/w,far:a.far,q:quatFromZ(n)});}
+  return out;
+}
+function fuseStreamingWindows(windows,frames){
+  const cfg=instantConfig(),emitted=new Set(),points=[],alignStats=[];
+  for(let wi=0;wi<windows.length;wi++){
+    const win=windows[wi];
+    if(win.align)alignStats.push(win.align);
+    for(const id of win.chronoIds){
+      if(emitted.has(id))continue;emitted.add(id);
+      const slot=win.frameIds.indexOf(id);if(slot<0)continue;
+      points.push(...generateFramePoints(win,slot,win.T,cfg,id));
+    }
+  }
+  if(points.length<2500)throw new Error(`Streaming fusion produced only ${points.length} weighted points. Capture more translation/overlap.`);
+
+  const anchorWin=windows.find(w=>w.frameIds.includes(0))||windows[0],anchor=cameraGlobal(anchorWin,0);
+  const right=norm3([anchor.rt[0],anchor.rt[3],anchor.rt[6]]),down=norm3([anchor.rt[1],anchor.rt[4],anchor.rt[7]]),forward=norm3([anchor.rt[2],anchor.rt[5],anchor.rt[8]]);
+  const up=mul3(down,-1),back=mul3(forward,-1);
+  for(const p of points){const d=sub3([p.x,p.y,p.z],anchor.c);p.x=dot3(d,right);p.y=dot3(d,up);p.z=dot3(d,back);p.n=norm3([dot3(p.n,right),dot3(p.n,up),dot3(p.n,back)]);}
+  const near=points.filter(p=>!p.far),sample=(near.length>1000?near:points).filter((_,i)=>i%29===0),rad=Math.max(1e-4,percentile(sample.map(p=>Math.hypot(p.x,p.y,p.z)),.90)),scale=2.45/rad;
+  let bg=0;
+  for(const p of points){
+    p.x*=scale;p.y*=scale;p.z*=scale;p.foot*=scale;
+    if(p.far&&cfg.shellQ<.999){const d=norm3([p.x,p.y,p.z]),shell=3.45+.18*(1-p.weight);p.x=d[0]*shell;p.y=d[1]*shell;p.z=d[2]*shell;p.n=mul3(d,-1);bg++;}
+    const tangent=p.far&&cfg.shellQ<.999?cfg.bgScale:Math.max(.0018,Math.min(cfg.maxScale,p.foot*cfg.sizeMul));
+    p.sx=tangent;p.sy=tangent;p.sz=Math.max(.0012,tangent*(p.far?.72:cfg.thickness));
+    p.alpha=Math.max(.30,Math.min(.97,(p.far?cfg.bgOpacity:cfg.opacity)*(.52+.48*p.weight)));
     p.q=quatFromZ(p.n);
   }
-
-  stats.preMerge=points.length;
-  let cleanPoints=voxelMerge(points,cfg.voxel);
-  stats.mergedAway=points.length-cleanPoints.length;
-  const island=pruneIsolatedVoxels(cleanPoints,cfg.neighbors);
-  cleanPoints=island.points;stats.islandRejected=island.rejected;stats.final=cleanPoints.length;
-  if(cleanPoints.length<1200)throw new Error(`Fusion cleanup left only ${cleanPoints.length} Gaussians. Move the CLEAN slider toward DENSE.`);
-
-  let poseSpread=0;
-  const canonCams=cams.map(cam=>{const d=[cam.c[0]-c0[0],cam.c[1]-c0[1],cam.c[2]-c0[2]];return [dot3(d,right)*scale,dot3(d,up)*scale,dot3(d,back)*scale];});
-  for(let i=0;i<canonCams.length;i++)for(let j=i+1;j<canonCams.length;j++)poseSpread=Math.max(poseSpread,Math.hypot(canonCams[i][0]-canonCams[j][0],canonCams[i][1]-canonCams[j][1],canonCams[i][2]-canonCams[j][2]));
-  return {points:cleanPoints,confKeep:cleanPoints.length/Math.max(1,stats.candidates),poseSpread,stats,cfg};
+  const preMerge=points.length,merged=surfaceAwareMerge(points,cfg);
+  let poseSpread=0;const cameraCenters=[];
+  for(let id=0;id<frames.length;id++){
+    const w=windows.find(x=>x.frameIds.includes(id));if(!w)continue;const cg=cameraGlobal(w,id),d=sub3(cg.c,anchor.c),c=[dot3(d,right)*scale,dot3(d,up)*scale,dot3(d,back)*scale];cameraCenters.push(c);
+  }
+  for(let i=0;i<cameraCenters.length;i++)for(let j=i+1;j<cameraCenters.length;j++)poseSpread=Math.max(poseSpread,Math.hypot(cameraCenters[i][0]-cameraCenters[j][0],cameraCenters[i][1]-cameraCenters[j][1],cameraCenters[i][2]-cameraCenters[j][2]));
+  const avgRmse=alignStats.length?alignStats.reduce((a,b)=>a+b.rmse,0)/alignStats.length:0;
+  return{points:merged,poseSpread,confKeep:merged.length/preMerge,stats:{preset:state.instantPreset,clean:state.instantClean,windows:windows.length,views:frames.length,raw:preMerge,mergedAway:preMerge-merged.length,background:bg,avgRmse,alignStats,final:merged.length}};
+}
+function instantDiag(result){
+  const x=result.stats||{};
+  return[
+    `V7 STREAM     ${x.views||0} VIEWS · ${x.windows||0} WINDOWS`,
+    `PRESET        ${String(x.preset||state.instantPreset).toUpperCase()} · CLEAN ${x.clean??state.instantClean}%`,
+    `SIM3 RMSE     ${Number(x.avgRmse||0).toFixed(4)}`,
+    `RAW SURFELS   ${(x.raw||0).toLocaleString()}`,
+    `BACKGROUND    ${(x.background||0).toLocaleString()} → SHELL`,
+    `SURFACE MERGE -${(x.mergedAway||0).toLocaleString()}`,
+    `FINAL         ${(x.final||result.points.length).toLocaleString()} GAUSSIANS`
+  ].join('\n');
+}
+async function applyInstantResult(result,label='V7 STREAM FUSION'){
+  $('metricConf').textContent=`${Math.round(result.confKeep*100)}% packed`;$('metricGauss').textContent=result.points.length.toLocaleString();$('metricPose').textContent=result.poseSpread.toFixed(2);diag(instantDiag(result));
+  setStep('fusion',100,'SIM3 LOCK');status('SOFT GAUSSIAN PACK','Encoding weighted surfels','No hard MVS deletion · moderate thickness · surface-aware merge',86);setStep('gauss',30,'PACKING');
+  const ply=writeGaussianPLY(result.points);state.plyBlob=ply;if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);state.plyUrl=URL.createObjectURL(ply);setStep('gauss',100,`${(ply.size/1048576).toFixed(1)} MB`);
+  status('VIEWER','Starting SuperSplat WebGPU','Loading streamed Gaussian scene',96);await openWorldBlob(state.plyUrl,`${INSTANT_PRESETS[state.instantPreset].label} · V7 STREAM`);setStep('viewer',100,'LIVE');status('DONE','Streaming reality compiled',`${result.points.length.toLocaleString()} Gaussian primitives`,100);
+}
+async function refilterInstant(){
+  if(!state.lastInstant?.windows)return toast('Run one V7 INSTANT reconstruction first');
+  try{show('analyze');buildSteps();setStep('keyframes',100,'CACHE');setStep('weights',100,'CACHE');setStep('infer',100,`${state.lastInstant.windows.length} WIN CACHE`);status('REFILTER','Repacking cached streaming geometry',`${INSTANT_PRESETS[state.instantPreset].label} · ${state.instantClean}% CLEAN · no DA3 rerun`,70);await new Promise(r=>requestAnimationFrame(r));const result=fuseStreamingWindows(state.lastInstant.windows,state.lastInstant.frames);await applyInstantResult(result,'V7 REFILTER');}
+  catch(err){console.error(err);diag(err.stack||err.message);modal('Refilter stopped',`<p>${escapeHtml(err.message)}</p><p>Move toward DENSE or use RAW.</p>`);show('world');}
+}
+async function compileWorld(frames,alreadyAnalyze=false){
+  show('analyze');buildSteps();renderFrames();state.sourceFrame=frames[Math.min(2,frames.length-1)];setStep('keyframes',100,`${frames.length} VIEWS`);
+  $('metricInput').textContent=`${frames.length} × 504² · STREAM`;diag(`V7: overlapping 4-view DA3 windows with dense Sim(3) alignment. ${frames.length} ordered views.`);
+  const preview=$('analysisCanvas');preview.width=SIZE;preview.height=SIZE;preview.getContext('2d').drawImage(state.sourceFrame.img,0,0,SIZE,SIZE);
+  try{
+    const session=await ensureSession(),specs=windowSpecs(frames),windows=[];let totalSec=0;
+    for(let wi=0;wi<specs.length;wi++){
+      const spec=specs[wi],{tensor,colors}=prepFrames(spec.inputFrames);
+      status('DA3 STREAMING',`Window ${wi+1}/${specs.length}`,`Frames ${spec.chrono.map(x=>x+1).join(' · ')} · 50% overlap`,20+wi/specs.length*42);
+      setStep('infer',Math.max(10,wi/specs.length*92),`${wi}/${specs.length}`);
+      const input=new ort.Tensor('float32',tensor,[1,4,3,SIZE,SIZE]),t0=performance.now(),out=await session.run({images:input});totalSec+=(performance.now()-t0)/1000;
+      const data=extractDA3Arrays(out),win={...data,colors,frameIds:spec.inputIds,chronoIds:spec.chrono,T:identitySim3(),align:null};
+      if(windows.length){const prev=windows.at(-1),align=estimateWindowSim3(prev,win);win.align=align;win.T=composeSim3(prev.T,align.T);setStep('fusion',Math.max(8,wi/specs.length*82),`SIM3 ${wi}/${specs.length-1}`);}
+      windows.push(win);
+    }
+    setStep('infer',100,`${specs.length} WIN · ${totalSec.toFixed(1)}s`);setStep('fusion',88,'GLOBAL');
+    state.lastInstant={windows,frames,createdAt:Date.now()};
+    status('STREAM FUSION','Building one global place','Dense overlap alignment · soft confidence · far-field shell',72);
+    const result=fuseStreamingWindows(windows,frames);await applyInstantResult(result,'V7 STREAM FUSION');
+  }catch(err){console.error(err);diag(err.stack||err.message);modal('V7 reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p>V7 needs temporal overlap. Record while <b>moving sideways/forward</b>; do not only rotate in place. RAW reduces post-fusion cleanup but still keeps streaming alignment.</p>`);show('landing');}
 }
 
 function writeGaussianPLY(points){
