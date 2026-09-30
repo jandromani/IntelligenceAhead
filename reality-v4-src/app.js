@@ -305,37 +305,68 @@ $('finishCaptureBtn').onclick=async()=>{
   }else if(state.mode==='metric'){
     metricNotYet();
   }else{
-    compileWorld(state.frames.slice(0,4));
+    compileWorld(state.frames.slice(0,targetViews()));
   }
 };
 
+function chooseChronologicalFrames(samples,target){
+  const count=Math.min(target,samples.length);
+  if(count<=4)return samples.slice(0,count);
+  const chosen=[];
+  for(let b=0;b<count;b++){
+    const lo=Math.floor(b*samples.length/count),hi=Math.max(lo+1,Math.floor((b+1)*samples.length/count));
+    const group=samples.slice(lo,hi);
+    let best=null,bestScore=-Infinity;
+    for(const fr of group){
+      const prev=chosen.at(-1);
+      const novelty=prev?Math.min(55,diffOf(fr.sig,prev.sig)):28;
+      const score=Math.log1p(fr.sharp)*16+novelty*.7;
+      if(score>bestScore){best=fr;bestScore=score;}
+    }
+    if(best)chosen.push(best);
+  }
+  return chosen.sort((a,b)=>(a.t??a._order??0)-(b.t??b._order??0));
+}
+
 async function extractVideoFrames(file){
-  show('analyze'); buildSteps(); status('VIDEO ANALYSIS','Finding four strong viewpoints','Sharpness + temporal spread + appearance diversity',4);diag('Decoding video locally. No upload.');
-  const url=URL.createObjectURL(file);const v=document.createElement('video');v.muted=true;v.playsInline=true;v.src=url;await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=rej;});
-  const dur=Math.max(.1,v.duration);const samples=[];const N=Math.min(20,Math.max(12,Math.round(dur*2)));
+  show('analyze');buildSteps();
+  status('VIDEO ANALYSIS','Building a chronological streaming capture','Blur rejection · temporal coverage · overlap',3);
+  diag('Decoding video locally. V7 keeps a temporal sequence instead of throwing the scan away.');
+  const url=URL.createObjectURL(file),v=document.createElement('video');v.muted=true;v.playsInline=true;v.src=url;
+  await new Promise((res,rej)=>{v.onloadedmetadata=res;v.onerror=rej;});
+  const dur=Math.max(.1,v.duration);
+  const target=dur>30?16:dur>16?14:12;
+  const N=Math.min(52,Math.max(target*3,Math.round(dur*2.2)));
+  const samples=[];
   for(let i=0;i<N;i++){
-    const t=(dur*.05)+(dur*.9)*(i/(N-1)); v.currentTime=t; await new Promise(r=>{v.onseeked=()=>r();});
-    const fr=await sourceToFrame(v,`T${t.toFixed(1)}s`); fr.t=t;samples.push(fr);status('VIDEO ANALYSIS','Finding four strong viewpoints',`Candidate ${i+1}/${N}`,4+10*(i+1)/N);
+    const t=(dur*.035)+(dur*.93)*(i/(N-1));v.currentTime=t;
+    await new Promise(r=>{v.onseeked=()=>r();});
+    const fr=await sourceToFrame(v,`T${t.toFixed(1)}s`);fr.t=t;fr._order=i;samples.push(fr);
+    status('VIDEO ANALYSIS','Building a chronological streaming capture',`Candidate ${i+1}/${N} · target ${target} views`,3+10*(i+1)/N);
   }
   URL.revokeObjectURL(url);
-  // Four temporal quartiles; choose sharpest frame in each, penalizing similarity to already chosen views.
-  const chosen=[];
-  for(let q=0;q<4;q++){
-    const a=Math.floor(q*N/4),b=Math.max(a+1,Math.floor((q+1)*N/4));const group=samples.slice(a,b);
-    let best=null,bestScore=-Infinity;
-    for(const fr of group){const diversity=chosen.length?Math.min(...chosen.map(c=>diffOf(fr.sig,c.sig))):50;const score=Math.log1p(fr.sharp)*14+diversity;if(score>bestScore){bestScore=score;best=fr;}}
-    chosen.push(best);
-  }
-  for(const fr of samples) if(!chosen.includes(fr)) URL.revokeObjectURL(fr.url);
-  state.frames=chosen;renderFrames(); setStep('keyframes',100,'4 VIEWS'); await compileWorld(chosen,true);
+  const chosen=chooseChronologicalFrames(samples,target);
+  for(const fr of samples)if(!chosen.includes(fr))URL.revokeObjectURL(fr.url);
+  state.frames=chosen;renderFrames();setStep('keyframes',100,`${chosen.length} VIEWS`);
+  await compileWorld(chosen,true);
 }
+
 async function choosePhotoFrames(files){
-  show('analyze');buildSteps();status('PHOTO ANALYSIS','Selecting the best four views','Prefer overlapping views with lateral movement',5);
-  const all=[];for(let i=0;i<files.length;i++){const {img,url,blob}=await blobToImage(files[i]);const fr=await sourceToFrame(img,files[i].name);URL.revokeObjectURL(url);all.push(fr);}
-  if(all.length<4){modal('Need four views','<p>DA3 multiview needs exactly <b>4 views</b>. Upload at least four overlapping photos.</p>');show('landing');return;}
-  const chosen=[]; let first=all.reduce((a,b)=>b.sharp>a.sharp?b:a);chosen.push(first);
-  while(chosen.length<4){let best=null,score=-1;for(const fr of all){if(chosen.includes(fr))continue;const div=Math.min(...chosen.map(c=>diffOf(fr.sig,c.sig)));const s=Math.log1p(fr.sharp)*12+div*1.4;if(s>score){score=s;best=fr;}}chosen.push(best);}
-  for(const fr of all)if(!chosen.includes(fr))URL.revokeObjectURL(fr.url);state.frames=chosen;renderFrames();setStep('keyframes',100,'4 VIEWS');await compileWorld(chosen,true);
+  show('analyze');buildSteps();
+  status('PHOTO ANALYSIS','Preparing ordered multiview sequence','Keep capture order for streaming alignment',5);
+  const all=[];
+  for(let i=0;i<files.length;i++){
+    const {img,url}=await blobToImage(files[i]);const fr=await sourceToFrame(img,files[i].name);URL.revokeObjectURL(url);
+    fr._order=i;all.push(fr);
+  }
+  if(all.length<4){
+    modal('Need at least four views','<p>Upload at least <b>4 overlapping photos</b>. 10–16 ordered views work much better.</p>');show('landing');return;
+  }
+  const target=Math.min(16,Math.max(4,all.length>=12?12:all.length));
+  const chosen=all.length>target?chooseChronologicalFrames(all,target):all;
+  for(const fr of all)if(!chosen.includes(fr))URL.revokeObjectURL(fr.url);
+  state.frames=chosen;renderFrames();setStep('keyframes',100,`${chosen.length} VIEWS`);
+  await compileWorld(chosen,true);
 }
 
 async function getModelBuffer(){
