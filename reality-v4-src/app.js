@@ -38,6 +38,9 @@ const state = {
   videoFile: null,
   photoFiles: [],
   proClient: null,
+  instantPreset: 'interior',
+  instantClean: 70,
+  lastInstant: null,
 };
 
 function show(name){
@@ -59,10 +62,61 @@ function setHealth(){
 setHealth(); addEventListener('online',setHealth); addEventListener('offline',setHealth);
 
 function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metric' ? 4 : (state.mode==='ultra' ? 24 : 48)); }
+const INSTANT_PRESETS={
+  terrace:{label:'TERRACE',confQ:.44,depthLo:.010,depthHi:.982,edgeRel:.085,mvsTol:.085,minAgree:1,allowOrphan:false,sky:true,voxel:.0075,neighbors:1,maxScale:.0115,sizeMul:.58,thickness:.10,opacity:.90,manhattan:.82},
+  interior:{label:'INTERIOR',confQ:.36,depthLo:.008,depthHi:.994,edgeRel:.115,mvsTol:.105,minAgree:1,allowOrphan:false,sky:false,voxel:.0065,neighbors:1,maxScale:.0140,sizeMul:.68,thickness:.12,opacity:.93,manhattan:.88},
+  object:{label:'OBJECT',confQ:.33,depthLo:.006,depthHi:.997,edgeRel:.095,mvsTol:.115,minAgree:1,allowOrphan:true,sky:false,voxel:.0045,neighbors:0,maxScale:.0090,sizeMul:.52,thickness:.08,opacity:.95,manhattan:0},
+  raw:{label:'RAW',confQ:.22,depthLo:.004,depthHi:.999,edgeRel:999,mvsTol:999,minAgree:0,allowOrphan:true,sky:false,voxel:0,neighbors:0,maxScale:.0260,sizeMul:1.12,thickness:.22,opacity:.965,manhattan:0}
+};
+function instantConfig(){
+  const base=INSTANT_PRESETS[state.instantPreset]||INSTANT_PRESETS.interior;
+  if(state.instantPreset==='raw')return {...base,clean:state.instantClean/100};
+  const clean=Math.max(0,Math.min(1,state.instantClean/100));
+  return {
+    ...base,clean,
+    confQ:Math.max(.22,Math.min(.62,base.confQ+(clean-.55)*.12)),
+    depthHi:Math.max(.94,base.depthHi-clean*.0045),
+    edgeRel:base.edgeRel*(1.22-.48*clean),
+    mvsTol:base.mvsTol*(1.22-.42*clean),
+    voxel:base.voxel*(.78+.48*clean),
+    maxScale:base.maxScale*(1.12-.34*clean),
+    sizeMul:base.sizeMul*(1.10-.38*clean),
+    thickness:base.thickness*(1.10-.34*clean),
+    opacity:Math.max(.86,Math.min(.96,base.opacity+(clean-.5)*.025))
+  };
+}
+function instantTuneMarkup(extra=''){
+  return `<div class="instantTuning ${extra}">
+    <div class="instantTuneHead"><b>INSTANT FUSION</b><span data-tune-summary></span></div>
+    <div class="presetRow">
+      ${Object.entries(INSTANT_PRESETS).map(([id,p])=>`<button type="button" data-instant-preset="${id}">${p.label}</button>`).join('')}
+    </div>
+    <div class="cleanRow"><span>DENSE</span><input type="range" min="0" max="100" step="1" data-instant-clean><span>CLEAN</span><b data-clean-value></b></div>
+    ${extra.includes('worldTune')?'<button type="button" class="applyTune" data-apply-instant>REFILTER · NO AI RERUN</button>':''}
+  </div>`;
+}
+function syncInstantControls(){
+  document.querySelectorAll('[data-instant-preset]').forEach(b=>b.classList.toggle('active',b.dataset.instantPreset===state.instantPreset));
+  document.querySelectorAll('[data-instant-clean]').forEach(x=>x.value=String(state.instantClean));
+  document.querySelectorAll('[data-clean-value]').forEach(x=>x.textContent=String(state.instantClean));
+  document.querySelectorAll('[data-tune-summary]').forEach(x=>x.textContent=`${INSTANT_PRESETS[state.instantPreset]?.label||'INTERIOR'} · ${state.instantClean}% CLEAN`);
+  document.querySelectorAll('.instantTuning').forEach(x=>x.classList.toggle('hiddenTune',state.mode!=='instant'));
+}
+function wireInstantControls(root=document){
+  root.querySelectorAll('[data-instant-preset]').forEach(btn=>{
+    btn.onclick=()=>{state.instantPreset=btn.dataset.instantPreset;syncInstantControls();};
+  });
+  root.querySelectorAll('[data-instant-clean]').forEach(sl=>{
+    sl.oninput=()=>{state.instantClean=Number(sl.value);syncInstantControls();};
+  });
+  root.querySelectorAll('[data-apply-instant]').forEach(btn=>btn.onclick=()=>refilterInstant());
+  syncInstantControls();
+}
+
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
-  if(brandSmall) brandSmall.textContent='V6.1 · PRIVATE GPU GSPLAT PIPELINE';
+  if(brandSmall) brandSmall.textContent='V6.2 · CLEAN MULTIVIEW FUSION';
   const health=document.querySelector('.health');
   if(health && !$('proChip')){
     const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
@@ -78,7 +132,13 @@ function installV4UI(){
       <button data-mode="metric"><b>METRIC</b><small>LiDAR / RGB-D</small></button>`;
     const actions=card.querySelector('.actions'); card.insertBefore(wrap,actions);
     wrap.querySelectorAll('button').forEach(btn=>btn.onclick=()=>setMode(btn.dataset.mode));
+    const tuning=document.createElement('div');tuning.innerHTML=instantTuneMarkup();wrap.insertAdjacentElement('afterend',tuning.firstElementChild);
   }
+  const world=$('world');
+  if(world && !world.querySelector('.worldTune')){
+    const box=document.createElement('div');box.innerHTML=instantTuneMarkup('worldTune');world.appendChild(box.firstElementChild);
+  }
+  wireInstantControls(document);
   const saved=loadSavedProJob();
   if(card && saved && !$('resumeJobBtn')){
     const btn=document.createElement('button');
@@ -105,6 +165,7 @@ function setMode(mode){
   const engine=$('engineChip');
   if(engine) engine.textContent=mode==='instant'?'DA3 · LOCAL':mode==='metric'?'LIDAR · IMPORT':mode.toUpperCase()+' · GPU';
   renderFrames();
+  syncInstantControls();
 }
 
 async function refreshProStatus(){
@@ -313,22 +374,70 @@ async function ensureSession(){
   catch(e){if(providers[0]==='webgpu'){diag(`WebGPU compile failed; trying WASM.\n${e.message}`);state.session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all'});return state.session;}throw e;}
 }
 
+
+function instantDiag(result){
+  const x=result.stats||{};
+  return [
+    `PRESET       ${String(x.preset||state.instantPreset).toUpperCase()} · CLEAN ${x.clean??state.instantClean}%`,
+    `CANDIDATES   ${(x.candidates||0).toLocaleString()}`,
+    `CONF/RANGE   -${((x.confidenceRejected||0)+(x.rangeRejected||0)).toLocaleString()}`,
+    `DEPTH EDGES  -${(x.edgeRejected||0).toLocaleString()}`,
+    `SKY/BG       -${(x.skyRejected||0).toLocaleString()}`,
+    `MVIEW FAIL   -${(x.mvsRejected||0).toLocaleString()}`,
+    `VOXEL MERGE  -${(x.mergedAway||0).toLocaleString()}`,
+    `ISLANDS      -${(x.islandRejected||0).toLocaleString()}`,
+    `FINAL        ${(x.final||result.points.length).toLocaleString()} GAUSSIANS`
+  ].join('\n');
+}
+async function applyInstantResult(result,label='DA3 CLEAN FUSION'){
+  $('metricConf').textContent=`${Math.round(result.confKeep*100)}% final`;
+  $('metricGauss').textContent=result.points.length.toLocaleString();
+  $('metricPose').textContent=result.poseSpread.toFixed(2);
+  diag(instantDiag(result));
+  setStep('fusion',100,'CLEAN');
+  status('GAUSSIAN PACK','Encoding filtered splats','MVS consistency · voxel merge · anisotropic surfaces',84);setStep('gauss',25,'PACKING');
+  const ply=writeGaussianPLY(result.points);state.plyBlob=ply;
+  if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);state.plyUrl=URL.createObjectURL(ply);
+  setStep('gauss',100,`${(ply.size/1048576).toFixed(1)} MB`);
+  status('VIEWER','Starting SuperSplat WebGPU','Loading cleaned Gaussian scene',95);
+  await openWorldBlob(state.plyUrl,`${INSTANT_PRESETS[state.instantPreset].label} · ${state.instantClean}% CLEAN`);
+  setStep('viewer',100,'LIVE');
+  status('DONE','Reality cleaned',`${result.points.length.toLocaleString()} Gaussian primitives`,100);
+}
+async function refilterInstant(){
+  if(!state.lastInstant?.out||!state.lastInstant?.colors)return toast('Run one INSTANT reconstruction first');
+  try{
+    show('analyze');buildSteps();setStep('keyframes',100,'CACHE');setStep('weights',100,'CACHE');setStep('infer',100,'CACHE');
+    status('REFILTER','Rebuilding the same DA3 geometry',`${INSTANT_PRESETS[state.instantPreset].label} · ${state.instantClean}% CLEAN · no model rerun`,65);
+    await new Promise(r=>requestAnimationFrame(()=>r()));
+    const result=fuseDA3(state.lastInstant.out,state.lastInstant.colors);
+    await applyInstantResult(result,'DA3 REFILTER');
+  }catch(err){
+    console.error(err);diag(err.stack||err.message);modal('Refilter stopped',`<p>${escapeHtml(err.message)}</p><p>Move the slider toward <b>DENSE</b> or choose RAW.</p>`);show('world');
+  }
+}
+
 async function compileWorld(frames,alreadyAnalyze=false){
   show('analyze');buildSteps();renderFrames();setStep('keyframes',100,'4 VIEWS');state.sourceFrame=frames[0];
-  $('metricInput').textContent='4 × 504²';diag('True 4-view inference. Depth and camera poses are solved together.');
+  $('metricInput').textContent=`4 × 504² · ${INSTANT_PRESETS[state.instantPreset].label}`;
+  diag(`True 4-view DA3 inference. Fusion preset: ${INSTANT_PRESETS[state.instantPreset].label}; CLEAN ${state.instantClean}%.`);
   const preview=$('analysisCanvas');preview.width=SIZE;preview.height=SIZE;preview.getContext('2d').drawImage(frames[0].img,0,0,SIZE,SIZE);
   try{
     status('PREPROCESS','Normalizing four views','ImageNet normalization · NCHW',12);const {tensor,colors}=prepFrames(frames);
     const session=await ensureSession();
     status('MULTIVIEW INFERENCE','Recovering visual space','Depth · confidence · intrinsics · extrinsics',50);setStep('infer',35,'RUNNING');
     const input=new ort.Tensor('float32',tensor,[1,4,3,SIZE,SIZE]);
-    const t0=performance.now();const out=await session.run({images:input});const dt=(performance.now()-t0)/1000;
-    setStep('infer',100,`${dt.toFixed(1)}s`);status('GEOMETRY','Fusing camera rays into one world','Confidence-gated reprojection',72);setStep('fusion',20,'UNPROJECT');
-    const result=fuseDA3(out,colors); $('metricConf').textContent=`${Math.round(result.confKeep*100)}% kept`; $('metricGauss').textContent=result.points.length.toLocaleString();$('metricPose').textContent=result.poseSpread.toFixed(2);
-    setStep('fusion',100,'ALIGNED');status('GAUSSIAN PACK','Encoding splat cloud','SH color · opacity · scale · rotation',82);setStep('gauss',25,'PACKING');
-    const ply=writeGaussianPLY(result.points);state.plyBlob=ply;if(state.plyUrl)URL.revokeObjectURL(state.plyUrl);state.plyUrl=URL.createObjectURL(ply);setStep('gauss',100,`${(ply.size/1048576).toFixed(1)} MB`);
-    status('VIEWER','Starting SuperSplat WebGPU','Loading Gaussian scene',95);await openWorldBlob(state.plyUrl,'DA3 MULTIVIEW');setStep('viewer',100,'LIVE');status('DONE','Reality compiled',`${result.points.length.toLocaleString()} Gaussian primitives`,100);
-  }catch(err){console.error(err);diag(err.stack||err.message);modal('Reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p><b>What changed in V3:</b> this is a real 4-view model. It will not silently fall back to a fake cardboard depth map. If DA3 cannot run, use a current Chrome/Edge with hardware acceleration, or import a PLY/SPLAT capture directly.</p>`);show('landing');}
+    const t0=performance.now(),out=await session.run({images:input}),dt=(performance.now()-t0)/1000;
+    state.lastInstant={out,colors,frames,createdAt:Date.now()};
+    setStep('infer',100,`${dt.toFixed(1)}s`);
+    status('CLEAN FUSION','Cross-checking every point against other cameras','Depth edges · MVS consistency · sky/background · voxel merge',70);setStep('fusion',15,'FILTER');
+    const result=fuseDA3(out,colors);
+    await applyInstantResult(result,'DA3 CLEAN FUSION');
+  }catch(err){
+    console.error(err);diag(err.stack||err.message);
+    modal('Reconstruction stopped',`<p>${escapeHtml(err.message)}</p><p>The local path is intentionally strict now. Try <b>RAW</b> or move CLEAN toward DENSE if a difficult scene loses too much geometry.</p>`);
+    show('landing');
+  }
 }
 
 function percentile(arr,p){const a=Array.from(arr).filter(Number.isFinite).sort((x,y)=>x-y);if(!a.length)return 0;return a[Math.min(a.length-1,Math.max(0,Math.floor((a.length-1)*p)))];}
@@ -347,82 +456,188 @@ function quatFromZ(n){
   const w=Math.sqrt((1+d)*.5), k=1/(2*w||1);
   return [w,-n[1]*k,n[0]*k,0];
 }
+
+function bilinearDepth(arr,base,x,y){
+  if(x<0||y<0||x>SIZE-1||y>SIZE-1)return NaN;
+  const x0=Math.floor(x),y0=Math.floor(y),x1=Math.min(SIZE-1,x0+1),y1=Math.min(SIZE-1,y0+1);
+  const tx=x-x0,ty=y-y0;
+  const a=arr[base+y0*SIZE+x0],b=arr[base+y0*SIZE+x1],c=arr[base+y1*SIZE+x0],d=arr[base+y1*SIZE+x1];
+  if(![a,b,c,d].every(Number.isFinite))return NaN;
+  return a*(1-tx)*(1-ty)+b*tx*(1-ty)+c*(1-tx)*ty+d*tx*ty;
+}
+function localDepthEdge(depth,base,x,y,z,step){
+  let mx=0,valid=0;
+  for(const [dx,dy] of [[step,0],[-step,0],[0,step],[0,-step]]){
+    const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=SIZE||yy>=SIZE)continue;
+    const d=depth[base+yy*SIZE+xx];if(!Number.isFinite(d)||d<=0)continue;
+    mx=Math.max(mx,Math.abs(d-z)/Math.max(.001,(Math.abs(d)+Math.abs(z))*.5));valid++;
+  }
+  return valid?mx:0;
+}
+function likelySky(r,g,b,y,z,farDepth){
+  const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max?((max-min)/max):0;
+  const upper=y<SIZE*.62;
+  const blue=upper&&b>95&&b>r*1.055&&b>g*1.015&&(b-r)>9;
+  const cloud= y<SIZE*.34 && max>188 && sat<.10 && z>farDepth;
+  return blue||cloud;
+}
+function multiviewAgreement(wx,wy,wz,src,depth,conf,viewParams,confFloor,tol){
+  let agree=0,visible=0,occluded=0;
+  for(let j=0;j<4;j++){
+    if(j===src)continue;
+    const v=viewParams[j],R=v.R,t=v.t;
+    const xc=R[0]*wx+R[1]*wy+R[2]*wz+t[0];
+    const yc=R[3]*wx+R[4]*wy+R[5]*wz+t[1];
+    const zc=R[6]*wx+R[7]*wy+R[8]*wz+t[2];
+    if(zc<=1e-5)continue;
+    const u=v.fx*xc/zc+v.cx,py=v.fy*yc/zc+v.cy;
+    if(u<1||py<1||u>SIZE-2||py>SIZE-2)continue;
+    const ii=j*SIZE*SIZE+Math.round(py)*SIZE+Math.round(u);
+    if(conf[ii]<confFloor*.72)continue;
+    const dz=bilinearDepth(depth,j*SIZE*SIZE,u,py);
+    if(!Number.isFinite(dz)||dz<=0)continue;
+    // A nearer observed surface can legitimately occlude this point.
+    if(zc>dz*(1+tol*1.7)){occluded++;continue;}
+    visible++;
+    const rel=Math.abs(dz-zc)/Math.max(.001,(Math.abs(dz)+Math.abs(zc))*.5);
+    if(rel<=tol)agree++;
+  }
+  return {agree,visible,occluded};
+}
+function snapManhattan(n,strength){
+  if(!strength)return n;
+  const a=n.map(Math.abs),axis=a.indexOf(Math.max(...a));
+  if(a[axis]<strength)return n;
+  const out=[0,0,0];out[axis]=n[axis]>=0?1:-1;return out;
+}
+function voxelMerge(points,voxel){
+  if(!voxel||points.length<2)return points;
+  const map=new Map();
+  for(const p of points){
+    const ix=Math.floor(p.x/voxel),iy=Math.floor(p.y/voxel),iz=Math.floor(p.z/voxel),key=`${ix},${iy},${iz}`;
+    let a=map.get(key);
+    if(!a){a={key,ix,iy,iz,n:0,x:0,y:0,z:0,nx:0,ny:0,nz:0,r:0,g:0,b:0,sx:0,sy:0,sz:0,conf:0,alpha:0,mask:0};map.set(key,a);}
+    a.n++;a.x+=p.x;a.y+=p.y;a.z+=p.z;a.nx+=p.n[0];a.ny+=p.n[1];a.nz+=p.n[2];a.r+=p.r;a.g+=p.g;a.b+=p.b;
+    a.sx+=p.sx;a.sy+=p.sy;a.sz+=p.sz;a.conf+=p.conf;a.alpha+=p.alpha;a.mask|=(1<<p.view);
+  }
+  const out=[];
+  for(const a of map.values()){
+    const n=a.n,normal=norm3([a.nx/n,a.ny/n,a.nz/n]);
+    out.push({x:a.x/n,y:a.y/n,z:a.z/n,n:normal,r:a.r/n,g:a.g/n,b:a.b/n,sx:a.sx/n,sy:a.sy/n,sz:a.sz/n,conf:a.conf/n,alpha:a.alpha/n,q:quatFromZ(normal),_cell:[a.ix,a.iy,a.iz],viewMask:a.mask});
+  }
+  return out;
+}
+function pruneIsolatedVoxels(points,minNeighbors){
+  if(!minNeighbors||points.length<2)return {points,rejected:0};
+  const set=new Set(points.map(p=>p._cell?.join(',')));
+  const kept=[];
+  for(const p of points){
+    const [x,y,z]=p._cell||[0,0,0];let near=0;
+    outer:for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(!dx&&!dy&&!dz)continue;
+      if(set.has(`${x+dx},${y+dy},${z+dz}`)&&++near>=minNeighbors)break outer;
+    }
+    if(near>=minNeighbors)kept.push(p);
+  }
+  return {points:kept,rejected:points.length-kept.length};
+}
 function fuseDA3(out,colors){
   const depth=out.depth?.data||out[Object.keys(out).find(k=>k.includes('depth')&&!k.includes('conf'))]?.data;
   const conf=out.depth_conf?.data||out[Object.keys(out).find(k=>k.includes('conf'))]?.data;
   const ext=out.extrinsics?.data||out[Object.keys(out).find(k=>k.includes('extr'))]?.data;
   const K=out.intrinsics?.data||out[Object.keys(out).find(k=>k.includes('intr'))]?.data;
   if(!depth||!conf||!ext||!K)throw new Error(`Unexpected DA3 outputs: ${Object.keys(out).join(', ')}`);
-  const plane=SIZE*SIZE;
-  const sampleConf=[];for(let i=0;i<conf.length;i+=23)if(Number.isFinite(conf[i]))sampleConf.push(conf[i]);
-  const confTh=percentile(sampleConf,.28);
-  const sampleDepth=[];for(let i=0;i<depth.length;i+=23)if(Number.isFinite(depth[i])&&depth[i]>0)sampleDepth.push(depth[i]);
-  const dLo=percentile(sampleDepth,.008),dHi=percentile(sampleDepth,.995);
-  const points=[];const cams=[];const stride=navigator.gpu?2:3;
+
+  const cfg=instantConfig(),plane=SIZE*SIZE;
+  const sampleConf=[];for(let i=0;i<conf.length;i+=19)if(Number.isFinite(conf[i]))sampleConf.push(conf[i]);
+  const confTh=percentile(sampleConf,cfg.confQ);
+  const sampleDepth=[];for(let i=0;i<depth.length;i+=19)if(Number.isFinite(depth[i])&&depth[i]>0)sampleDepth.push(depth[i]);
+  const dLo=percentile(sampleDepth,cfg.depthLo),dHi=percentile(sampleDepth,cfg.depthHi),farDepth=percentile(sampleDepth,.82);
+  const viewParams=[],cams=[];
   for(let v=0;v<4;v++){
-    const ebase=v*12,kbase=v*9;const {rt,c}=invertRt(ext,ebase);cams.push({c,rt});
-    const fx=K[kbase],fy=K[kbase+4],cx=K[kbase+2],cy=K[kbase+5];
-    for(let y=1;y<SIZE-stride-1;y+=stride)for(let x=1;x<SIZE-stride-1;x+=stride){
-      const pi=v*plane+y*SIZE+x,z=depth[pi],cf=conf[pi];
-      if(!Number.isFinite(z)||z<=dLo||z>=dHi||cf<confTh)continue;
-      const xc=(x-cx)/fx*z,yc=(y-cy)/fy*z,zc=z;
+    const ebase=v*12,kbase=v*9,{rt,c}=invertRt(ext,ebase);
+    cams.push({c,rt});
+    viewParams.push({
+      R:[ext[ebase],ext[ebase+1],ext[ebase+2],ext[ebase+4],ext[ebase+5],ext[ebase+6],ext[ebase+8],ext[ebase+9],ext[ebase+10]],
+      t:[ext[ebase+3],ext[ebase+7],ext[ebase+11]],
+      fx:K[kbase],fy:K[kbase+4],cx:K[kbase+2],cy:K[kbase+5]
+    });
+  }
+
+  const stats={preset:state.instantPreset,clean:state.instantClean,candidates:0,confidenceRejected:0,rangeRejected:0,edgeRejected:0,skyRejected:0,mvsRejected:0,preMerge:0,mergedAway:0,islandRejected:0,final:0};
+  const points=[],stride=navigator.gpu?2:3;
+  for(let v=0;v<4;v++){
+    const {c,rt}=cams[v],vp=viewParams[v],base=v*plane;
+    for(let y=1+stride;y<SIZE-stride-1;y+=stride)for(let x=1+stride;x<SIZE-stride-1;x+=stride){
+      stats.candidates++;
+      const pi=base+y*SIZE+x,z=depth[pi],cf=conf[pi];
+      if(!Number.isFinite(z)||z<=dLo||z>=dHi){stats.rangeRejected++;continue;}
+      if(cf<confTh){stats.confidenceRejected++;continue;}
+      const edge=localDepthEdge(depth,base,x,y,z,stride);
+      if(edge>cfg.edgeRel){stats.edgeRejected++;continue;}
+
+      const ci=(y*SIZE+x)*4,r=colors[v][ci],g=colors[v][ci+1],b=colors[v][ci+2];
+      if(cfg.sky&&likelySky(r,g,b,y,z,farDepth)){stats.skyRejected++;continue;}
+
+      const xc=(x-vp.cx)/vp.fx*z,yc=(y-vp.cy)/vp.fy*z,zc=z;
       const wx=rt[0]*xc+rt[1]*yc+rt[2]*zc+c[0];
       const wy=rt[3]*xc+rt[4]*yc+rt[5]*zc+c[1];
       const wz=rt[6]*xc+rt[7]*yc+rt[8]*zc+c[2];
 
-      // Local surface normal from two neighboring depth samples.
+      if(cfg.minAgree){
+        const mv=multiviewAgreement(wx,wy,wz,v,depth,conf,viewParams,confTh,cfg.mvsTol);
+        if(mv.agree<cfg.minAgree && !(cfg.allowOrphan&&mv.visible===0)){stats.mvsRejected++;continue;}
+      }
+
       let nw=[0,0,1];
       const zr=depth[pi+stride],zd=depth[pi+stride*SIZE];
       if(Number.isFinite(zr)&&Number.isFinite(zd)&&zr>0&&zd>0){
         const ar=[xc,yc,zc];
-        const br=[(x+stride-cx)/fx*zr,(y-cy)/fy*zr,zr];
-        const dr=[(x-cx)/fx*zd,(y+stride-cy)/fy*zd,zd];
-        const t1=[br[0]-ar[0],br[1]-ar[1],br[2]-ar[2]];
-        const t2=[dr[0]-ar[0],dr[1]-ar[1],dr[2]-ar[2]];
+        const br=[(x+stride-vp.cx)/vp.fx*zr,(y-vp.cy)/vp.fy*zr,zr];
+        const dr=[(x-vp.cx)/vp.fx*zd,(y+stride-vp.cy)/vp.fy*zd,zd];
+        const t1=[br[0]-ar[0],br[1]-ar[1],br[2]-ar[2]],t2=[dr[0]-ar[0],dr[1]-ar[1],dr[2]-ar[2]];
         const nc=norm3(cross3(t1,t2));
-        nw=norm3([
-          rt[0]*nc[0]+rt[1]*nc[1]+rt[2]*nc[2],
-          rt[3]*nc[0]+rt[4]*nc[1]+rt[5]*nc[2],
-          rt[6]*nc[0]+rt[7]*nc[1]+rt[8]*nc[2]
-        ]);
+        nw=norm3([rt[0]*nc[0]+rt[1]*nc[1]+rt[2]*nc[2],rt[3]*nc[0]+rt[4]*nc[1]+rt[5]*nc[2],rt[6]*nc[0]+rt[7]*nc[1]+rt[8]*nc[2]]);
       }
-      const ci=(y*SIZE+x)*4;
-      points.push({x:wx,y:wy,z:wz,nw,r:colors[v][ci],g:colors[v][ci+1],b:colors[v][ci+2],depth:z,conf:cf,foot:z/Math.sqrt(Math.max(1,fx*fy))*stride});
+      points.push({x:wx,y:wy,z:wz,nw,r,g,b,depth:z,conf:cf,view:v,foot:z/Math.sqrt(Math.max(1,vp.fx*vp.fy))*stride});
     }
   }
-  if(points.length<2000)throw new Error(`DA3 returned too few confident points (${points.length}). Capture more overlap and move more slowly.`);
+  if(points.length<1800)throw new Error(`${INSTANT_PRESETS[state.instantPreset].label} filtering left only ${points.length} points. Move DENSE↔CLEAN toward DENSE or capture with more overlap.`);
 
-  // Canonical room frame: use camera-0 axes, not an arbitrary global flip.
   const c0=cams[0].c,rt0=cams[0].rt;
-  const right=norm3([rt0[0],rt0[3],rt0[6]]);
-  const down=norm3([rt0[1],rt0[4],rt0[7]]);
-  const forward=norm3([rt0[2],rt0[5],rt0[8]]);
-  const up=[-down[0],-down[1],-down[2]];
-  const back=[-forward[0],-forward[1],-forward[2]];
-
+  const right=norm3([rt0[0],rt0[3],rt0[6]]),down=norm3([rt0[1],rt0[4],rt0[7]]),forward=norm3([rt0[2],rt0[5],rt0[8]]);
+  const up=[-down[0],-down[1],-down[2]],back=[-forward[0],-forward[1],-forward[2]];
   for(const p of points){
     const d=[p.x-c0[0],p.y-c0[1],p.z-c0[2]];
-    p.x=dot3(d,right); p.y=dot3(d,up); p.z=dot3(d,back);
-    p.n=[dot3(p.nw,right),dot3(p.nw,up),dot3(p.nw,back)];
+    p.x=dot3(d,right);p.y=dot3(d,up);p.z=dot3(d,back);
+    p.n=snapManhattan(norm3([dot3(p.nw,right),dot3(p.nw,up),dot3(p.nw,back)]),cfg.manhattan);
   }
 
   const sample=points.filter((_,i)=>i%31===0);
   const mx=percentile(sample.map(p=>p.x),.5),my=percentile(sample.map(p=>p.y),.5),mz=percentile(sample.map(p=>p.z),.5);
   const radii=sample.map(p=>Math.hypot(p.x-mx,p.y-my,p.z-mz));
-  const rad=Math.max(1e-4,percentile(radii,.9)),scale=2.8/rad;
+  const rad=Math.max(1e-4,percentile(radii,.90)),scale=2.8/rad;
   for(const p of points){
     p.x=(p.x-mx)*scale;p.y=(p.y-my)*scale;p.z=(p.z-mz)*scale;
-    const tangent=Math.max(.0025,Math.min(.026,p.foot*scale*1.15));
-    p.sx=tangent;p.sy=tangent;p.sz=Math.max(.0012,tangent*.22);
+    const tangent=Math.max(.0017,Math.min(cfg.maxScale,p.foot*scale*cfg.sizeMul));
+    const far=Math.max(0,Math.min(1,(p.depth-dLo)/Math.max(1e-5,dHi-dLo)));
+    const farShrink=cfg.sky?1-.30*Math.max(0,(far-.65)/.35):1;
+    p.sx=tangent*farShrink;p.sy=tangent*farShrink;p.sz=Math.max(.0007,tangent*cfg.thickness);
+    p.alpha=Math.max(.72,cfg.opacity-(cfg.sky?Math.max(0,far-.72)*.22:0));
     p.q=quatFromZ(p.n);
   }
+
+  stats.preMerge=points.length;
+  let cleanPoints=voxelMerge(points,cfg.voxel);
+  stats.mergedAway=points.length-cleanPoints.length;
+  const island=pruneIsolatedVoxels(cleanPoints,cfg.neighbors);
+  cleanPoints=island.points;stats.islandRejected=island.rejected;stats.final=cleanPoints.length;
+  if(cleanPoints.length<1200)throw new Error(`Fusion cleanup left only ${cleanPoints.length} Gaussians. Move the CLEAN slider toward DENSE.`);
+
   let poseSpread=0;
-  const canonCams=cams.map(cam=>{
-    const d=[cam.c[0]-c0[0],cam.c[1]-c0[1],cam.c[2]-c0[2]];
-    return [dot3(d,right)*scale,dot3(d,up)*scale,dot3(d,back)*scale];
-  });
+  const canonCams=cams.map(cam=>{const d=[cam.c[0]-c0[0],cam.c[1]-c0[1],cam.c[2]-c0[2]];return [dot3(d,right)*scale,dot3(d,up)*scale,dot3(d,back)*scale];});
   for(let i=0;i<canonCams.length;i++)for(let j=i+1;j<canonCams.length;j++)poseSpread=Math.max(poseSpread,Math.hypot(canonCams[i][0]-canonCams[j][0],canonCams[i][1]-canonCams[j][1],canonCams[i][2]-canonCams[j][2]));
-  return {points,confKeep:points.length/(4*Math.ceil(SIZE/stride)*Math.ceil(SIZE/stride)),poseSpread};
+  return {points:cleanPoints,confKeep:cleanPoints.length/Math.max(1,stats.candidates),poseSpread,stats,cfg};
 }
 
 function writeGaussianPLY(points){
@@ -431,12 +646,12 @@ function writeGaussianPLY(points){
   header+=`property float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nproperty float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\nend_header\n`;
   const hb=new TextEncoder().encode(header);const floatsPer=3+3+3+rest+1+3+4;const buf=new ArrayBuffer(hb.length+points.length*floatsPer*4);const u8=new Uint8Array(buf);u8.set(hb,0);const dv=new DataView(buf);let o=hb.length;
   const put=(v)=>{dv.setFloat32(o,v,true);o+=4;};
-  for(const p of points){put(p.x);put(p.y);put(p.z);put(p.n?.[0]||0);put(p.n?.[1]||0);put(p.n?.[2]||0);put((p.r/255-.5)/C0);put((p.g/255-.5)/C0);put((p.b/255-.5)/C0);for(let i=0;i<rest;i++)put(0);put(Math.log(.965/.035));put(Math.log(p.sx||.008));put(Math.log(p.sy||.008));put(Math.log(p.sz||.002));const q=p.q||[1,0,0,0];put(q[0]);put(q[1]);put(q[2]);put(q[3]);}
+  for(const p of points){put(p.x);put(p.y);put(p.z);put(p.n?.[0]||0);put(p.n?.[1]||0);put(p.n?.[2]||0);put((p.r/255-.5)/C0);put((p.g/255-.5)/C0);put((p.b/255-.5)/C0);for(let i=0;i<rest;i++)put(0);const alpha=Math.max(.01,Math.min(.99,p.alpha??.94));put(Math.log(alpha/(1-alpha)));put(Math.log(p.sx||.008));put(Math.log(p.sy||.008));put(Math.log(p.sz||.002));const q=p.q||[1,0,0,0];put(q[0]);put(q[1]);put(q[2]);put(q[3]);}
   return new Blob([buf],{type:'application/octet-stream'});
 }
 
 async function openWorldBlob(url,label){
-  $('worldId').textContent=String(Math.floor(Math.random()*10000)).padStart(4,'0');$('worldBadgeText').textContent=label;
+  $('worldId').textContent=String(Math.floor(Math.random()*10000)).padStart(4,'0');$('worldBadgeText').textContent=label;syncInstantControls();
   if(state.viewer){ try{state.viewer.destroy();}catch{} state.viewer=null; }
   const container=$('splatViewer'); container.innerHTML=''; show('world'); setStep('viewer',35,'WEBGPU');
   const baseOptions={
