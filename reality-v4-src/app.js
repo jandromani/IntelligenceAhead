@@ -479,8 +479,11 @@ function windowSpecs(frames){
   });
 }
 function windowCamera(win,slot){
+  win._cams=win._cams||[];
+  if(win._cams[slot])return win._cams[slot];
   const e=slot*12,k=slot*9,inv=invertRt(win.ext,e);
-  return{...inv,fx:win.K[k],fy:win.K[k+4],cx:win.K[k+2],cy:win.K[k+5]};
+  const cam={...inv,fx:win.K[k],fy:win.K[k+4],cx:win.K[k+2],cy:win.K[k+5]};
+  win._cams[slot]=cam;return cam;
 }
 function unprojectAt(win,slot,x,y){
   const base=slot*SIZE*SIZE,i=base+y*SIZE+x,z=win.depth[i];
@@ -615,7 +618,7 @@ function fuseStreamingWindows(windows,frames){
     p.x*=scale;p.y*=scale;p.z*=scale;p.foot*=scale;
     if(p.far&&cfg.shellQ<.999){const d=norm3([p.x,p.y,p.z]),shell=3.45+.18*(1-p.weight);p.x=d[0]*shell;p.y=d[1]*shell;p.z=d[2]*shell;p.n=mul3(d,-1);bg++;}
     const tangent=p.far&&cfg.shellQ<.999?cfg.bgScale:Math.max(.0018,Math.min(cfg.maxScale,p.foot*cfg.sizeMul));
-    p.sx=tangent;p.sy=tangent;p.sz=Math.max(.0012,tangent*(p.far?.72:cfg.thickness));
+    p.sx=tangent;p.sy=tangent;p.sz=Math.max(.0012,tangent*(p.far ? .72 : cfg.thickness));
     p.alpha=Math.max(.30,Math.min(.97,(p.far?cfg.bgOpacity:cfg.opacity)*(.52+.48*p.weight)));
     p.q=quatFromZ(p.n);
   }
