@@ -61,28 +61,25 @@ function setHealth(){
 }
 setHealth(); addEventListener('online',setHealth); addEventListener('offline',setHealth);
 
-function targetViews(){ return state.mode==='instant' ? 4 : (state.mode==='metric' ? 4 : (state.mode==='ultra' ? 24 : 48)); }
+function targetViews(){ return state.mode==='instant' ? 12 : (state.mode==='metric' ? 4 : (state.mode==='ultra' ? 24 : 48)); }
 const INSTANT_PRESETS={
-  terrace:{label:'TERRACE',confQ:.44,depthLo:.010,depthHi:.982,edgeRel:.085,mvsTol:.085,minAgree:1,allowOrphan:false,sky:true,voxel:.0075,neighbors:1,maxScale:.0115,sizeMul:.58,thickness:.10,opacity:.90,manhattan:.82},
-  interior:{label:'INTERIOR',confQ:.36,depthLo:.008,depthHi:.994,edgeRel:.115,mvsTol:.105,minAgree:1,allowOrphan:false,sky:false,voxel:.0065,neighbors:1,maxScale:.0140,sizeMul:.68,thickness:.12,opacity:.93,manhattan:.88},
-  object:{label:'OBJECT',confQ:.33,depthLo:.006,depthHi:.997,edgeRel:.095,mvsTol:.115,minAgree:1,allowOrphan:true,sky:false,voxel:.0045,neighbors:0,maxScale:.0090,sizeMul:.52,thickness:.08,opacity:.95,manhattan:0},
-  raw:{label:'RAW',confQ:.22,depthLo:.004,depthHi:.999,edgeRel:999,mvsTol:999,minAgree:0,allowOrphan:true,sky:false,voxel:0,neighbors:0,maxScale:.0260,sizeMul:1.12,thickness:.22,opacity:.965,manhattan:0}
+  terrace:{label:'TERRACE',confQ:.22,edgeSoft:.115,shellQ:.82,voxel:.010,maxScale:.0160,sizeMul:.78,thickness:.48,opacity:.88,bgOpacity:.62,bgScale:.023},
+  interior:{label:'INTERIOR',confQ:.20,edgeSoft:.145,shellQ:.95,voxel:.008,maxScale:.0175,sizeMul:.82,thickness:.42,opacity:.91,bgOpacity:.58,bgScale:.021},
+  object:{label:'OBJECT',confQ:.18,edgeSoft:.120,shellQ:.985,voxel:.0055,maxScale:.0120,sizeMul:.66,thickness:.34,opacity:.94,bgOpacity:.50,bgScale:.016},
+  raw:{label:'RAW',confQ:.10,edgeSoft:9,shellQ:1,voxel:0,maxScale:.0240,sizeMul:1.0,thickness:.55,opacity:.94,bgOpacity:.70,bgScale:.024}
 };
 function instantConfig(){
   const base=INSTANT_PRESETS[state.instantPreset]||INSTANT_PRESETS.interior;
-  if(state.instantPreset==='raw')return {...base,clean:state.instantClean/100};
   const clean=Math.max(0,Math.min(1,state.instantClean/100));
+  if(state.instantPreset==='raw')return {...base,clean};
   return {
     ...base,clean,
-    confQ:Math.max(.22,Math.min(.62,base.confQ+(clean-.55)*.12)),
-    depthHi:Math.max(.94,base.depthHi-clean*.0045),
-    edgeRel:base.edgeRel*(1.22-.48*clean),
-    mvsTol:base.mvsTol*(1.22-.42*clean),
-    voxel:base.voxel*(.78+.48*clean),
-    maxScale:base.maxScale*(1.12-.34*clean),
-    sizeMul:base.sizeMul*(1.10-.38*clean),
-    thickness:base.thickness*(1.10-.34*clean),
-    opacity:Math.max(.86,Math.min(.96,base.opacity+(clean-.5)*.025))
+    confQ:Math.max(.08,Math.min(.42,base.confQ+(clean-.55)*.10)),
+    voxel:base.voxel*(.72+.52*clean),
+    maxScale:base.maxScale*(1.12-.22*clean),
+    sizeMul:base.sizeMul*(1.08-.20*clean),
+    thickness:base.thickness*(1.08-.18*clean),
+    opacity:Math.max(.78,Math.min(.96,base.opacity+(clean-.5)*.035))
   };
 }
 function instantTuneMarkup(extra=''){
@@ -116,7 +113,7 @@ function wireInstantControls(root=document){
 
 function installV4UI(){
   const brandSmall=document.querySelector('.brand small');
-  if(brandSmall) brandSmall.textContent='V6.2 · CLEAN MULTIVIEW FUSION';
+  if(brandSmall) brandSmall.textContent='V7 · STREAMING SIM3 FUSION';
   const health=document.querySelector('.health');
   if(health && !$('proChip')){
     const chip=document.createElement('span'); chip.id='proChip'; chip.textContent='PRO GPU · CHECK'; health.appendChild(chip);
@@ -126,7 +123,7 @@ function installV4UI(){
     const wrap=document.createElement('div');
     wrap.id='modeSwitch'; wrap.className='modeSwitch';
     wrap.innerHTML=`
-      <button data-mode="instant" class="active"><b>INSTANT</b><small>4-view · local</small></button>
+      <button data-mode="instant" class="active"><b>INSTANT</b><small>12-view · streaming</small></button>
       <button data-mode="pro"><b>PRO</b><small>Splatfacto · 30K</small></button>
       <button data-mode="ultra"><b>ULTRA</b><small>Splatfacto Big · 30K</small></button>
       <button data-mode="metric"><b>METRIC</b><small>LiDAR / RGB-D</small></button>`;
@@ -155,7 +152,7 @@ function setMode(mode){
   const copy=document.querySelector('.capture-card > p');
   if(copy){
     copy.textContent=mode==='instant'
-      ? 'Fast local preview. Four overlapping views are reconstructed in your browser.'
+      ? 'Streaming local reconstruction. 10–16 chronological views are processed as overlapping DA3 windows and aligned with dense Sim(3).'
       : mode==='pro'
       ? 'Full-room GPU path. Video is solved with SfM, then Splatfacto/gsplat optimizes the room for 30,000 iterations and exports a real Gaussian PLY.'
       : mode==='ultra'
@@ -203,7 +200,7 @@ function buildSteps(){
   const remote=state.mode==='pro'||state.mode==='ultra';
   const items=remote
     ? [['upload','GPU UPLOAD'],['infer','FRAME PREP'],['fusion','CAMERA SOLVE'],['gauss',state.mode==='ultra'?'GSPLAT BIG · 30K':'GSPLAT · 30K'],['export','PLY EXPORT'],['viewer','SPLAT VIEWER']]
-    : [['keyframes','KEYFRAMES'],['weights','DA3 WEIGHTS'],['infer','MULTIVIEW INFERENCE'],['fusion','POSE FUSION'],['gauss','GAUSSIAN PACK'],['viewer','SPLAT VIEWER']];
+    : [['keyframes','KEYFRAMES'],['weights','DA3 WEIGHTS'],['infer','DA3 WINDOWS'],['fusion','SIM(3) STREAM FUSION'],['gauss','SOFT GAUSSIAN PACK'],['viewer','SPLAT VIEWER']];
   $('steps').innerHTML=items.map(([id,label])=>`<div class="step" data-step="${id}"><div><span>${label}</span><b>WAIT</b></div><i><u></u></i></div>`).join('');
 }
 function status(kicker,text,sub,pct){ $('statusKicker').textContent=kicker; $('statusText').textContent=text; $('statusSub').textContent=sub||''; $('mainProgress').style.width=`${pct||0}%`; }
@@ -297,7 +294,7 @@ async function captureCameraFrame(auto){
   $('motion').textContent=diff>34?'WIDE':diff>16?'GOOD':'LOW'; $('motion').style.color=diff>16?'var(--lime)':'#d6bd69';
   if(auto && (candidate.sharp<95 || diff<15)){URL.revokeObjectURL(candidate.url);return;}
   state.frames.push(candidate); renderFrames(); const cover=Math.min(100,Math.round(state.frames.length/needed*100));$('coverage').textContent=`${cover}%`;$('coverageBar').style.width=`${cover}%`;
-  const guides=['MOVE SLOWLY TO THE RIGHT →','ARC AROUND THE SCENE ↗','CAPTURE THE OTHER SIDE ←','ENOUGH PARALLAX · BUILD'];$('captureGuide').textContent=guides[Math.min(state.frames.length,4)-1]||guides[0];
+  const guides=['MOVE SIDEWAYS →','KEEP OVERLAP · DO NOT PAN IN PLACE','ARC AROUND THE SPACE ↗','REVISIT A CORNER ↩','CAPTURE FAR SIDE ←','STREAM COVERAGE GOOD'];const gi=Math.min(guides.length-1,Math.floor(state.frames.length/2));$('captureGuide').textContent=guides[gi]||guides[0];
   if(state.frames.length>=needed){clearInterval(state.autoTimer);state.autoTimer=null;$('autoCaptureBtn').textContent='AUTO SCAN';}
 }
 $('finishCaptureBtn').onclick=async()=>{
