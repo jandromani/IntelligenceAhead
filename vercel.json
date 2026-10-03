@@ -9,17 +9,5 @@
       "path": "/api/cron/control",
       "schedule": "0 8 * * *"
     }
-  ],
-  "functions": {
-    "app/api/queues/commerce-audit/route.ts": {
-      "experimentalTriggers": [
-        {
-          "type": "queue/v2beta",
-          "topic": "atlas-events",
-          "retryAfterSeconds": 60,
-          "initialDelaySeconds": 0
-        }
-      ]
-    }
-  }
+  ]
 }
