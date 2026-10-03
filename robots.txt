@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://intelligence-ahead.vercel.app/sitemap.xml
