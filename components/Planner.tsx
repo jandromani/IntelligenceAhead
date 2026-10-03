@@ -9,6 +9,9 @@ import { HERO_VARIANTS, type HeroVariant } from "@/src/growth/experiments";
 import WorldMap from "@/components/WorldMap";
 import LiveOffers from "@/components/LiveOffers";
 import VerifiedRoute from "@/components/VerifiedRoute";
+import SilverSearch from "@/components/SilverSearch";
+import SilverHotelCard from "@/components/SilverHotelCard";
+import SilverPromise from "@/components/SilverPromise";
 
 const euro = (n: number) => "€" + Math.round(n).toLocaleString("en-US");
 
@@ -36,6 +39,7 @@ export default function Planner({ hotels, initial, heroVariant="freedom" }: { ho
   const plan = useMemo(() => buildPlan(hotels, livingBudget, party, duration, mode), [hotels, livingBudget, party, duration, mode]);
   const totals = useMemo(() => planTotals(plan), [plan]);
   const avg = Math.round(totals.total / Math.max(1, totals.days / 30));
+  const affordableCount = useMemo(() => hotels.filter(h => adjustedMonthly(h,party) <= livingBudget).length, [hotels,livingBudget,party]);
 
   useEffect(() => {
     growthEvent("planner_loaded", { catalogue_size: hotels.length, hero_variant:heroVariant });
@@ -46,6 +50,11 @@ export default function Planner({ hotels, initial, heroVariant="freedom" }: { ho
     const list = hotels.filter(h => (region === "All" || h.region === region) && (!q || [h.name,h.city,h.country,...h.tags].join(" ").toLowerCase().includes(q)));
     return list.sort((a,b) => sort === "price" ? adjustedMonthly(a,party)-adjustedMonthly(b,party) : sort === "score" ? b.score-a.score : (b.score / adjustedMonthly(b,party)) - (a.score / adjustedMonthly(a,party)));
   }, [hotels, query, region, sort, party]);
+
+  function jumpToExplore(){
+    growthEvent("hero_search",{query,region,party,duration,budget:livingBudget});
+    document.getElementById("explore")?.scrollIntoView({behavior:"smooth"});
+  }
 
   async function sharePlan() {
     const token=encodePlanToken({pension,rent,other,share,party,duration,mode});
@@ -90,45 +99,44 @@ export default function Planner({ hotels, initial, heroVariant="freedom" }: { ho
     <>
       <header className="nav">
         <div className="shell navin">
-          <a className="brand" href="#">ATLAS<span>LAB</span></a>
+          <a className="brand" href="#">ATLAS<span>LONG STAY</span></a>
           <nav className="navlinks">
+            <a href="#explore">Stays</a>
             <a href="#planner">Build my year</a>
-            <a href="#explore">Explore</a>
-            <a href="#agent">AI concierge</a>
-            <a href="/system">System proof</a>
-            <a className="btn" href="#planner">Build my year →</a>
+            <a href="#agent">Ask Atlas</a>
+            <a className="btn" href="#explore">Find a stay →</a>
           </nav>
         </div>
       </header>
 
-      <section className="hero">
+      <section className="hero silverHero">
         <div className="shell">
-          <div className="eyebrow"><i className="dot"/> {hero.eyebrow}</div>
-          <h1>{hero.line1}<br/><em>{hero.line2}</em></h1>
-          <p>{hero.lead}</p>
-          <div className="heroActions">
-            <a className="btn" href="#planner">See what my retirement buys →</a>
-            <a className="btn ghost" href="#explore">Browse 30 places</a>
+          <div className="eyebrow"><i className="dot"/> LONG-STAY HOTEL LIVING · 30–180 DAYS</div>
+          <h1>Live somewhere better.<br/><em>Stay for a season.</em></h1>
+          <p className="heroLead">Compare long-stay hotels by monthly cost, not nightly rate. Build a flexible life around the budget you already have.</p>
+          <SilverSearch query={query} setQuery={setQuery} region={region} setRegion={setRegion} duration={duration} setDuration={setDuration} party={party} setParty={setParty} count={affordableCount} onSearch={jumpToExplore}/>
+          <div className="proof silverProof">
+            <div className="proofCard"><b>€ / month</b><span>compare living cost, not a weekend</span></div>
+            <div className="proofCard"><b>30–180 days</b><span>one month, one season or longer</span></div>
+            <div className="proofCard"><b>Silver Score</b><span>comfort and value signals</span></div>
+            <div className="proofCard"><b>Truth-gated</b><span>verified offers stay separate from demos</span></div>
           </div>
-          <div className="actions" style={{marginTop:18}}>
-            <a className="btn ghost" href="/discover/under-1500-month">Under €1,500</a>
-            <a className="btn ghost" href="/discover/winter-sun">Winter sun</a>
-            <a className="btn ghost" href="/discover/all-inclusive">All inclusive</a>
-          </div>
-          <div className="proof">
-            <div className="proofCard"><b>30–180 days</b><span>the unit is a season, not a night</span></div>
-            <div className="proofCard"><b>30 places</b><span>seed catalogue across 4 regions</span></div>
-            <div className="proofCard"><b>1 click ledger</b><span>every outbound offer is attributable</span></div>
-            <div className="proofCard"><b>Truth-gated</b><span>nothing sells just because an agent says so</span></div>
-          </div>
+        </div>
+      </section>
+
+      <section className="howBand">
+        <div className="shell howGrid">
+          <div><span>01</span><b>Set your monthly reality</b><p>Tell Atlas how much you want to spend and how long you want to stay.</p></div>
+          <div><span>02</span><b>Compare months, not nights</b><p>Filter by climate, food, walkability, sea, pool and healthcare access.</p></div>
+          <div><span>03</span><b>Live there. Then move.</b><p>Build the year one 30–90 day stay at a time.</p></div>
         </div>
       </section>
 
       <section id="planner" className="dark">
         <div className="shell">
           <div className="sectionTitle">
-            <h2>What does your<br/>retirement buy?</h2>
-            <p>The planner is deterministic. AI can explain and suggest; it cannot invent a price or mark an offer sellable.</p>
+            <h2>Build your<br/>living budget.</h2>
+            <p>Your monthly budget becomes a route. AI can help explain choices, but live prices and sellability remain evidence-controlled.</p>
           </div>
           <WorldMap hotels={hotels} route={plan.map(s=>s.hotel)} />
           <div className="grid2">
@@ -194,35 +202,21 @@ export default function Planner({ hotels, initial, heroVariant="freedom" }: { ho
 
       <section id="explore" className="discovery">
         <div className="shell">
-          <div className="sectionTitle"><h2>Explore the world<br/>by monthly cost.</h2><p>These are prototype seed prices used to exercise the architecture. The production path replaces them with live provider quotes and direct long-stay rates.</p></div>
+          <div className="sectionTitle"><h2>Long-stay hotels<br/>for your budget.</h2><p>Filter by what matters when you are actually living somewhere: monthly cost, climate, board, walkability, sea, pool and healthcare access.</p></div>
           <div className="toolbar">
             <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search city, country, pool, sea, clinic…"/>
             <select value={region} onChange={e=>setRegion(e.target.value)}><option>All</option><option>Europe</option><option>Asia</option><option>Africa</option><option>Americas</option></select>
             <select value={sort} onChange={e=>setSort(e.target.value)}><option value="value">Best value</option><option value="price">Lowest monthly</option><option value="score">Silver score</option></select>
           </div>
           <div className="hotels">
-            {visible.map(h => {
-              const p = adjustedMonthly(h,party);
-              return <article className="hotel" key={h.id}>
-                <div className="hotelVisual"><span className="flag">{h.flag}</span><span className="score">SILVER {h.score}</span></div>
-                <div className="hotelBody">
-                  <h3>{h.name}</h3><div className="loc">{h.city}, {h.country} · demo scenario · not a live quote</div>
-                  <div className="chips">{h.tags.slice(0,4).map(t=><span className="chip" key={t}>{t}</span>)}</div>
-                  <div className="priceRow">
-                    <div><b>{euro(p)}</b><small>/month · {h.board}</small></div>
-                    <a className="linkbtn" href={"/api/referral?hotel="+encodeURIComponent(h.slug)+"&provider="+h.provider+"&from=%2Fexplore"}>Search externally →</a>
-                  </div>
-                  <div className="actions"><a className="btn ghost" href={"/live/"+h.slug}>Life page</a></div>
-                </div>
-              </article>
-            })}
+            {visible.map(h => <SilverHotelCard key={h.id} hotel={h} party={party} duration={duration}/>)}
           </div>
         </div>
       </section>
 
       <section id="agent" className="agentBand">
         <div className="shell">
-          <div className="sectionTitle"><h2>AI concierge.<br/>Evidence underneath.</h2><p>The agent can reason over your budget and the catalogue, but it cannot change truth-state, prices or attribution.</p></div>
+          <div className="sectionTitle"><h2>Ask Atlas.<br/>Your long-stay concierge.</h2><p>Ask for warm sea, healthcare and a maximum monthly budget. Atlas can shortlist and explain while verified prices remain evidence-controlled.</p></div>
           <div className="agentGrid">
             <div className="chat">
               <div className="chatlog">{chat.map((m,i)=><div className={"msg "+m.role} key={i}>{m.text}</div>)}</div>
@@ -243,19 +237,8 @@ export default function Planner({ hotels, initial, heroVariant="freedom" }: { ho
         </div>
       </section>
 
-      <section className="vc">
-        <div className="shell vcgrid">
-          <div><div className="eyebrow" style={{color:"#0a1630"}}>THE THESIS</div><h2 style={{marginTop:22}}>An attention → intent → referral → revenue machine.</h2><p style={{fontSize:18,color:"#dce5ff"}}>Booking optimizes room nights. Atlas optimizes months of life — and monetizes the natural services around each decision without owning inventory.</p></div>
-          <div className="vcbox">
-            <div><b>Wedge</b>Curiosity-first retirement calculator</div>
-            <div><b>Commerce</b>Tracked hotel / flight / insurance referrals</div>
-            <div><b>Margin expansion</b>B2B net rates + direct long-stay supply</div>
-            <div><b>Moat</b>Long-stay price history + Silver Score + intent graph</div>
-            <div><b>Operating model</b>Deterministic core, agentic perimeter, external judges</div>
-          </div>
-        </div>
-      </section>
-      <footer className="footer"><div className="shell">ATLAS LAB · internal codename · prototype inventory is illustrative until provider credentials are connected.</div></footer>
+      <SilverPromise />
+      <footer className="footer"><div className="shell footerGrid"><span>ATLAS · LONG-STAY LIVING</span><span>Prototype catalogue is clearly marked until live provider inventory is connected.</span><a href="/system">System proof</a></div></footer>
     </>
   );
 }
