@@ -24,3 +24,13 @@ https://intelligence-ahead.vercel.app/
 - RSS feed for issue-level publishing
 
 Commits to `master` deploy automatically to Vercel.
+
+## Libro visual · Mateo y el Algoritmo
+
+- [Landing pública](https://intelligence-ahead.vercel.app/mateo): portada, gancho editorial, muestra e información.
+- [Lector interactivo](https://intelligence-ahead.vercel.app/mateo/leer): 124 páginas originales en AVIF y permalink `?p=84`.
+- [Press kit](https://intelligence-ahead.vercel.app/mateo/prensa): materiales, propuestas y contacto.
+- [Libro completo PDF](https://intelligence-ahead.vercel.app/mateo/mateo-y-el-algoritmo.pdf): generado desde las páginas originales.
+- [Imagen social 1200x630](https://intelligence-ahead.vercel.app/mateo/og-mateo.jpg): generada desde la portada real.
+
+Los JPEG y PDF se generan en CI por `scripts/build-mateo-assets.py`. La generación está habilitada inicialmente para `feat/mateo-public-launch-20261013`. Los 124 AVIF son fuente primaria; no insertar imágenes de la revista por error ni inventar avales institucionales.
