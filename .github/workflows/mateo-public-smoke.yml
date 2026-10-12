@@ -1,0 +1,50 @@
+name: Smoke test Mateo public URLs
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/mateo-public-smoke.yml'
+      - 'mateo/**'
+      - 'index.html'
+      - 'sitemap.xml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-mateo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify published site and social links
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://intelligence-ahead.vercel.app"
+          expected=(
+            "/"
+            "/mateo"
+            "/mateo/leer"
+            "/mateo/prensa"
+            "/mateo/pages/001.avif"
+            "/mateo/pages/124.avif"
+            "/mateo/og-mateo.jpg"
+            "/mateo/portada.jpg"
+            "/mateo/mateo-y-el-algoritmo.pdf"
+            "/mateo/muestra.pdf"
+            "/sitemap.xml"
+          )
+          for attempt in $(seq 1 18); do
+            echo "Deployment check $attempt"
+            if curl -fsSL --max-time 20 "$BASE/mateo" | grep -q 'og-mateo.jpg' && curl -fsSL --max-time 20 "$BASE/mateo/leer" | grep -q '/mateo/pages/'; then
+              break
+            fi
+            if [ "$attempt" -eq 18 ]; then echo "Landing/reader not ready"; exit 1; fi
+            sleep 10
+          done
+          for p in "${expected[@]}"; do
+            echo "Checking $BASE$p"
+            code=$(curl -sSIL --max-time 30 -o /dev/null -w '%{http_code}' "$BASE$p")
+            echo "$p -> $code"
+            if [ "$code" != "200" ]; then echo "FAIL: $p"; exit 1; fi
+          done
+          echo "All 11 public URL checks passed."
