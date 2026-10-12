@@ -1,0 +1,38 @@
+name: Build Mateo book assets
+on:
+  push:
+    branches:
+      - feat/mateo-public-launch-20261013
+    paths:
+      - 'mateo/pages/**'
+      - 'scripts/build-mateo-assets.py'
+      - '.github/workflows/mateo-assets.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pillow pillow-avif-plugin img2pdf pypdf
+      - name: Build image cards and book PDFs
+        run: python scripts/build-mateo-assets.py
+      - name: Check generated assets and push
+        run: |
+          test -s mateo/portada.jpg
+          test -s mateo/og-mateo.jpg
+          test -s mateo/mateo-y-el-algoritmo.pdf
+          test -s mateo/muestra.pdf
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mateo/portada.jpg mateo/og-mateo.jpg mateo/mateo-y-el-algoritmo.pdf mateo/muestra.pdf
+          if ! git diff --cached --quiet; then
+            git commit -m "assets: publish Mateo cover, OG card, complete PDF and sample"
+            git push origin HEAD:feat/mateo-public-launch-20261013
+          fi
