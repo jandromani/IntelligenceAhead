@@ -1,0 +1,1 @@
+export default function handler(req,res){if(req.method!=="GET"){res.status(405).end();return;}res.setHeader("Cache-Control","no-store");res.status(200).json({ok:true,name:"mateo-reading-guide",version:"0.1.0",mcp:"/mcp"});}

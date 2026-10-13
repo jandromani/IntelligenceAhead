@@ -1,0 +1,20 @@
+name: Mateo Guide MCP CI
+on:
+  push:
+    paths: ['plugins/mateo-guide/**', '.github/workflows/mateo-guide-mcp-ci.yml']
+  pull_request:
+    paths: ['plugins/mateo-guide/**', '.github/workflows/mateo-guide-mcp-ci.yml']
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/mateo-guide
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: node --check api/mcp.js && node --check mcp.js
