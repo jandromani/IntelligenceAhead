@@ -1,0 +1,32 @@
+name: Mateo Guide Public MCP Smoke
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/mateo-guide-public-smoke.yml', 'plugins/mateo-guide/**']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production service, JSON-RPC handshake and tool execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://tia-mateo-guide.vercel.app
+          for n in $(seq 1 15); do
+            if curl -sSf --max-time 15 "$BASE/health" | jq -e '.ok == true and .name == "mateo-reading-guide"' >/dev/null; then break; fi
+            if [ "$n" = 15 ]; then echo 'Health failed'; exit 1; fi
+            sleep 8
+          done
+          curl -sSf --max-time 20 -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}' "$BASE/mcp" \
+            | jq -e '.result.serverInfo.name == "mateo-reading-guide"'
+          curl -sSf --max-time 20 -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' "$BASE/mcp" \
+            | jq -e '[.result.tools[].name] | sort == ["get_book_page_link","get_book_press_materials","list_book_chapters","plan_algorithm_activity"] | sort'
+          curl -sSf --max-time 20 -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_book_page_link","arguments":{"page":84}}}' "$BASE/mcp" \
+            | jq -e '.result.structuredContent.page == 84 and (.result.structuredContent.read_url | contains("leer?p=84"))'
+          echo "Mateo Guide public MCP smoke passed."
