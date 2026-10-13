@@ -19,8 +19,8 @@
     "com.openai": {
       "interface": {
         "displayName": "Mateo Guide",
-        "shortDescription": "Explora el libro y aprende algoritmos.",
-        "longDescription": "Explora los 124 capítulos/páginas del libro visual gratuito Mateo y el Algoritmo, comparte enlaces a páginas concretas, prepara actividades sobre algoritmos y pensamiento crítico y accede al dossier editorial. Herramientas de solo lectura, sin cuenta de usuario.",
+        "shortDescription": "Libro, páginas y actividades",
+        "longDescription": "Explora las 124 páginas del libro visual gratuito Mateo y el Algoritmo, comparte enlaces a páginas concretas, prepara actividades sobre algoritmos y pensamiento crítico y accede al dossier editorial. Herramientas de solo lectura, sin cuenta de usuario.",
         "developerName": "Alejandro Baratas",
         "capabilities": [
           "Read"
@@ -32,7 +32,13 @@
           "Muéstrame el índice del libro Mateo y el Algoritmo.",
           "Quiero leer la página 84 de Mateo.",
           "Crea una actividad de 15 minutos para explicar qué es un algoritmo a niños de 8 años."
-        ]
+        ],
+        "category": "Education & Research",
+        "supportURL": "https://tia-mateo-guide.vercel.app/support.html",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/logo.svg",
+        "brandColor": "#28334A",
+        "brandColorDark": "#F4CE78"
       }
     }
   }
