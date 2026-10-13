@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mateo-guide",
+  "version": "0.1.0",
+  "description": "Explore Mateo y el Algoritmo, open exact illustrated book pages and create short digital-literacy activities.",
+  "author": {
+    "name": "Alejandro Baratas",
+    "url": "https://tia-mateo-guide.vercel.app"
+  },
+  "homepage": "https://tia-mateo-guide.vercel.app",
+  "repository": "https://github.com/jandromani/IntelligenceAhead/tree/master/plugins/mateo-guide",
+  "keywords": [
+    "education",
+    "reading",
+    "algorithms",
+    "digital-literacy"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Mateo Guide",
+        "shortDescription": "Explora el libro y aprende algoritmos.",
+        "longDescription": "Explora los 124 capítulos/páginas del libro visual gratuito Mateo y el Algoritmo, comparte enlaces a páginas concretas, prepara actividades sobre algoritmos y pensamiento crítico y accede al dossier editorial. Herramientas de solo lectura, sin cuenta de usuario.",
+        "developerName": "Alejandro Baratas",
+        "capabilities": [
+          "Read"
+        ],
+        "websiteURL": "https://tia-mateo-guide.vercel.app/",
+        "privacyPolicyURL": "https://tia-mateo-guide.vercel.app/privacy.html",
+        "termsOfServiceURL": "https://tia-mateo-guide.vercel.app/terms.html",
+        "defaultPrompt": [
+          "Muéstrame el índice del libro Mateo y el Algoritmo.",
+          "Quiero leer la página 84 de Mateo.",
+          "Crea una actividad de 15 minutos para explicar qué es un algoritmo a niños de 8 años."
+        ]
+      }
+    }
+  }
+}
